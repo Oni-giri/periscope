@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block content %}
+{% if report %}
+  <header class="page-header">
+    <div class="eyebrow">Weekly report</div>
+    <div class="header-row">
+      <div>
+        <h1>{{ report.week }}</h1>
+        <div class="metadata">
+          <span>{{ report.start_date|absolute_date }} to {{ report.end_date|absolute_date }}</span>
+          <span>{{ report.stats["items"] }} items</span>
+          <span>{{ report.stats.stories }} stories</span>
+          <span>{{ report.stats.reading_hours_saved }} h saved</span>
+        </div>
+      </div>
+      {% if weeks|length > 1 %}
+        <details class="calendar-menu">
+          <summary>Reports</summary>
+          <div class="calendar-list">
+            {% for week in weeks %}
+              <a href="{{ url_for('weekly_report', week=week) }}"{% if week == report.week %} aria-current="page"{% endif %}>{{ week }}</a>
+            {% endfor %}
+          </div>
+        </details>
+      {% endif %}
+    </div>
+  </header>
+
+  <section class="weekly-section">
+    <h2 class="section-label">Themes of the week</h2>
+    <div class="theme-list">
+      {% for theme in report.rendered["themes"] %}
+        <article class="numbered-row">
+          <span>{{ loop.index }}</span>
+          <div>
+            <h3>{{ theme.title }}</h3>
+            <p>{{ theme.summary }}</p>
+          </div>
+        </article>
+      {% else %}
+        <p class="muted-copy">No recurring themes were recorded this week.</p>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="trend-grid">
+    <div>
+      <h2 class="section-label">Trending up in your graph</h2>
+      {% for item in report.rendered.trending_up %}
+        <div class="trend-row">
+          <strong>@{{ item.handle }}</strong>
+          <span>+{{ item.delta }} {{ item.reason }}</span>
+        </div>
+      {% else %}
+        <p class="muted-copy">No upward movement yet.</p>
+      {% endfor %}
+    </div>
+    <div>
+      <h2 class="section-label">Trending down</h2>
+      {% for item in report.rendered.trending_down %}
+        <div class="trend-row">
+          <strong>@{{ item.handle }}</strong>
+          <span>{{ item.delta }} {{ item.reason }}</span>
+        </div>
+      {% else %}
+        <p class="muted-copy">No downward movement yet.</p>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="weekly-section">
+    <h2 class="section-label">Picks and keeps calibration</h2>
+    <p>{{ report.rendered.calibration.kept_count }} local keeps and {{ report.rendered.calibration.pick_count }} model picks this week.</p>
+    {% if report.rendered.calibration.kept_not_picked %}
+      <p class="muted-copy">You kept {{ report.rendered.calibration.kept_not_picked|length }} posts the digest did not pick.</p>
+      <div class="calibration-list">
+        {% for tweet in report.rendered.calibration.kept_not_picked %}
+          <article>
+            <strong>@{{ tweet.author }}</strong>
+            <p>{{ tweet.text }}</p>
+          </article>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </section>
+
+  <section class="weekly-section">
+    <h2 class="section-label">Suggested list changes</h2>
+    <div class="suggestion-row"><strong>Add</strong><span>{% for handle in report.rendered.suggestions.add %}@{{ handle }}{% if not loop.last %}, {% endif %}{% else %}No additions suggested{% endfor %}</span></div>
+    <div class="suggestion-row"><strong>Review</strong><span>{% for handle in report.rendered.suggestions.drop %}@{{ handle }}{% if not loop.last %}, {% endif %}{% else %}No removals suggested{% endfor %}</span></div>
+    <p class="section-note">Nothing changes without your explicit review in Discovery or Settings.</p>
+  </section>
+{% else %}
+  <header class="page-header">
+    <div class="eyebrow">Weekly report</div>
+    <h1>No weekly report yet</h1>
+    <p class="lede">The first report appears after the scheduled weekly graph run.</p>
+  </header>
+{% endif %}
+{% endblock %}

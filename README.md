@@ -1,0 +1,222 @@
+# Periscope
+
+Periscope is a self-hosted, read-only X/Twitter digest. It turns a curated list
+timeline into a finite daily set of clustered stories and standalone picks,
+stores the source material in SQLite, and pushes a short summary to Telegram.
+
+The product and architecture contract lives in [plan.md](plan.md).
+[Periscope_dc.html](Periscope_dc.html) is a visual design reference only; the
+production interface is a separate FastAPI, Jinja, HTMX application.
+
+## Implemented system
+
+Periscope currently includes:
+
+- typed TOML configuration plus chmod-600 env-file secrets;
+- idempotent SQLite migrations, WAL, FTS5, and raw source persistence;
+- live `twscrape` and fixture-backed X adapters with thread and quote expansion;
+- defensive Anthropic clustering, picks, weekly narration, and spend accounting;
+- engagement-normalized ranking, bait penalties, and view-driven topic decay;
+- finite Today, Feed, Archive, Discovery, Weekly, and Settings pages;
+- local keeps, graph discovery, review actions, and weekly calibration;
+- in-process APScheduler jobs with matching CLI and run-now entrypoints;
+- Telegram delivery, inline actions, and collapsed failure alerts;
+- official MCP stdio and Streamable HTTP tools with an explicit write gate;
+- non-root Docker, Compose healthcheck, and Umbrel packaging;
+- deterministic `--mock-x --mock-llm` execution for credential-free testing.
+
+The production curation prompts are deliberately not included yet. A live daily
+or weekly run reports a clear configuration error until the corresponding
+prompt path points to a non-empty file. The deterministic mock curator exercises
+structure and persistence only; it does not encode editorial policy.
+
+## How data moves
+
+```text
+X list or JSON fixture
+        |
+        v
+fetch log -> raw tweet rows -> FTS5 archive
+                               |
+                               v
+                     clustering + picks
+                               |
+                               v
+                    ranked digest row
+                        |            |
+                        v            v
+                   Telegram        web/MCP
+```
+
+The important boundary is the raw tweet row. Fetching completes that write
+before curation begins, so a stored window can be rebuilt with new prompts
+without contacting X again.
+
+## Local mock run
+
+Python 3.12 and `uv` are required.
+
+```bash
+uv sync --extra dev
+uv run python -m periscope.jobs.daily \
+  --config config.example.toml \
+  --data-dir ./data \
+  --mock-x tests/fixtures/timeline.json \
+  --mock-llm \
+  --date 2026-07-16
+```
+
+This creates `data/periscope.db`, ingests the anonymized fixture, assembles a
+digest, and prints a machine-readable job result. No X, Anthropic, or Telegram
+credentials are required.
+
+Reprocess the stored rows without fetching again:
+
+```bash
+uv run python -m periscope.jobs.daily \
+  --config config.example.toml \
+  --data-dir ./data \
+  --skip-fetch \
+  --mock-llm \
+  --date 2026-07-16
+```
+
+Run ingestion only:
+
+```bash
+uv run python -m periscope.jobs.fetchonly \
+  --config config.example.toml \
+  --data-dir ./data \
+  --mock-x tests/fixtures/timeline.json
+```
+
+## Live configuration
+
+1. Copy `config.example.toml` to `/data/config.toml`.
+2. Set `x.list_id` to the numeric ID of the curated X list.
+3. Add the seed handles and topics.
+4. Copy `secrets.example.env` to `/data/secrets.env`, fill it, and run
+   `chmod 600 /data/secrets.env`.
+5. Add the cluster, picks, and weekly prompt files at the configured paths.
+6. Update model pricing in TOML if USD spend reporting is required; prices are
+   configuration because they change independently from application releases.
+
+Secrets accepted by the env file are:
+
+- `X_AUTH_TOKEN` and `X_CT0`;
+- `ANTHROPIC_API_KEY`;
+- `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`.
+
+Process environment variables override values from the file. Secret values are
+never copied into the Periscope database. The database stores only
+`*_is_configured` flags.
+
+A live daily run is:
+
+```bash
+uv run python -m periscope.jobs.daily
+```
+
+An X authentication failure records one open `cookie_dead` incident and sends
+one Telegram alert. Successful fetching closes the incident, allowing a future
+failure to alert again.
+
+## Web and scheduling
+
+Start the complete local service:
+
+```bash
+PERISCOPE_DATA_DIR=./data uv run uvicorn periscope.web.app:app \
+  --host 0.0.0.0 --port 3999
+```
+
+The FastAPI lifespan starts the feed interval, daily digest times, weekly report,
+mounted MCP session manager, and optional Telegram callback polling. Settings
+schedule edits replace APScheduler jobs immediately. Consumption pages do not
+poll, auto-refresh, or provide infinite scroll.
+
+The Settings credentials form never renders stored secret values. Blank fields
+preserve the existing value; supplied values are atomically written to
+`/data/secrets.env` with mode 600.
+
+## MCP
+
+The Streamable HTTP endpoint is available at:
+
+```text
+http://periscope.local:3999/mcp
+```
+
+The stdio server is:
+
+```bash
+uv run periscope-mcp
+```
+
+Example Claude Desktop style configuration:
+
+```json
+{
+  "mcpServers": {
+    "periscope": {
+      "command": "uv",
+      "args": ["run", "--directory", "/path/to/periscope", "periscope-mcp"],
+      "env": {"PERISCOPE_DATA_DIR": "/data"}
+    }
+  }
+}
+```
+
+Read tools are always available. `add_to_list`, `reject_candidate`, and
+`run_topic_search` require `PERISCOPE_MCP_ALLOW_WRITES=1`. Topic searches
+are additionally limited to five calls per rolling hour.
+
+## Docker and Umbrel
+
+Build the multi-architecture image before Umbrel distribution:
+
+```bash
+docker buildx build --platform linux/amd64,linux/arm64 \
+  --tag your-registry/periscope:0.1.0 --push .
+```
+
+Before submitting to an app store, replace the local image in
+`docker-compose.yml` with that published image and its multi-architecture
+SHA-256 digest, then fill the repository and support URLs in `umbrel-app.yml`.
+Umbrel mounts `${APP_DATA_DIR}/data` at `/data`; the database, configuration,
+secrets, prompt overrides, and twscrape pool all persist there.
+
+The application has no built-in user authentication. Umbrel's app proxy may
+protect the UI, but direct Docker deployments must remain on a trusted LAN or
+Tailscale network. Do not expose port 3999 to the public internet.
+
+## Tests
+
+```bash
+uv run pytest
+```
+
+The suite covers configuration precedence, migration idempotency, raw payload
+preservation, FTS trigger synchronization, secret isolation, cookie-alert
+collapse, defensive LLM parsing, ranking, weekly idempotency, Settings
+operations, MCP write gating, and the mounted HTTP transport.
+
+An explicitly opt-in smoke test can verify configured live services without
+writing to X or sending a Telegram message:
+
+```bash
+PERISCOPE_CONFIG=/data/config.toml \
+PERISCOPE_SECRETS=/data/secrets.env \
+PERISCOPE_RUN_LIVE_TESTS=1 \
+uv run pytest -m live tests/test_live_integration.py
+```
+
+It reads at most three posts from the configured X list into a temporary
+database, makes one small structured Anthropic request, and, when Telegram is
+configured, performs read-only bot and chat lookups. It never follows an
+account, sends a Telegram message, or touches the production database.
+
+## Deployment assumption
+
+The trusted-private-network assumption is a product boundary, not a substitute
+for public-exposure hardening.

@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block content %}
+  <a class="back-link" href="{{ url_for('dated_digest', digest_date=cluster.digest_date) }}">← Back to digest</a>
+  <header class="page-header detail-header">
+    <div class="tag inline-tag">{{ cluster.tag }}</div>
+    <h1>{{ cluster.headline }}</h1>
+    <p class="lede">{{ cluster.synthesis }}</p>
+    <div class="metadata">
+      <span>{{ cluster.tweets|length }} posts</span>
+      <span>{{ cluster.digest_date|absolute_date }}</span>
+    </div>
+  </header>
+
+  <section class="thread-list" aria-label="Source posts">
+    {% for tweet in cluster.tweets %}
+      <article class="thread-post{% if tweet.thread_root_id != tweet.id %} is-reply{% endif %}">
+        <header>
+          <span class="avatar">{{ tweet.author[:2]|upper }}</span>
+          <strong>@{{ tweet.author }}</strong>
+          <time datetime="{{ tweet.created_at }}">{{ tweet.created_at|absolute_time }}</time>
+          <span class="post-kind">{{ tweet.kind }}</span>
+        </header>
+        <p>{{ tweet.text }}</p>
+        {% if tweet.urls %}
+          <div class="source-links">
+            {% for url in tweet.urls %}
+              <a href="{{ url }}" rel="noreferrer">{{ url|truncate(64, true) }} ↗</a>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </article>
+    {% endfor %}
+  </section>
+
+  <footer class="detail-footer">
+    <a class="back-link" href="{{ url_for('dated_digest', digest_date=cluster.digest_date) }}">← Back to digest</a>
+  </footer>
+{% endblock %}

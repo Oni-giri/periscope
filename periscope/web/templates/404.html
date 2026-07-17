@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block content %}
+  <section class="empty-state">
+    <span class="empty-kicker">404</span>
+    <h1>This page is outside the digest.</h1>
+    <p>The address may be stale, or the underlying digest was rebuilt.</p>
+    <a class="button" href="{{ url_for('today') }}">Return to today</a>
+  </section>
+{% endblock %}

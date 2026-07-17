@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block content %}
+  <header class="page-header">
+    <h1>Feed</h1>
+    <p class="lede">Everything fetched since the latest digest. This page ends where the stored fetch window ends.</p>
+  </header>
+
+  <form class="filter-bar" method="get" action="{{ url_for('feed') }}">
+    <label>
+      <span>Account</span>
+      <select name="account">
+        <option value="">All accounts</option>
+        {% for account in facets.accounts %}
+          <option value="{{ account }}"{% if account == selected_account %} selected{% endif %}>@{{ account }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="checkbox-label">
+      <input type="checkbox" name="kept" value="true"{% if kept_only %} checked{% endif %}>
+      <span>Kept only</span>
+    </label>
+    <button class="button is-secondary" type="submit">Apply</button>
+  </form>
+
+  {% if batches %}
+    {% for batch in batches %}
+      <section class="feed-batch" aria-labelledby="batch-{{ batch.id }}">
+        <header class="batch-header">
+          <h2 id="batch-{{ batch.id }}">Fetch {{ batch.id }}</h2>
+          <div>
+            <time datetime="{{ batch.started_at }}">{{ batch.started_at|absolute_date }} at {{ batch.started_at|absolute_time }}</time>
+            <span>{{ batch.tweets|length }} posts</span>
+          </div>
+        </header>
+        <div class="feed-list">
+          {% for tweet in batch.tweets %}
+            <article class="feed-post">
+              <span class="avatar">{{ tweet.author[:2]|upper }}</span>
+              <div class="feed-copy">
+                <strong>@{{ tweet.author }}</strong>
+                <p>{{ tweet.text }}</p>
+                {% if tweet.thread_root_id != tweet.id %}
+                  <span class="thread-label">Thread reply</span>
+                {% endif %}
+              </div>
+              <time datetime="{{ tweet.created_at }}">{{ tweet.created_at|absolute_time }}</time>
+              {% include "partials/keep_button.html" with context %}
+            </article>
+          {% endfor %}
+        </div>
+      </section>
+    {% endfor %}
+    <footer class="page-footer"><span>End of feed</span></footer>
+  {% else %}
+    <section class="empty-state compact">
+      <span class="empty-kicker">Nothing in this window</span>
+      <h2>No posts match these filters.</h2>
+      <p>Change the account or keep filter. New content appears only after the scheduled fetch runs.</p>
+    </section>
+  {% endif %}
+{% endblock %}

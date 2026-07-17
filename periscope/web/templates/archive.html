@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block content %}
+  <header class="page-header">
+    <h1>Archive</h1>
+    <p class="lede">Search every stored post. Results are finite, absolute-dated, and ordered by relevance.</p>
+  </header>
+
+  <form class="archive-form" method="get" action="{{ url_for('archive') }}">
+    <label class="search-field">
+      <span>Search</span>
+      <input name="q" value="{{ q }}" placeholder="Words, phrases, or FTS5 operators">
+    </label>
+    <div class="archive-filters">
+      <label><span>From</span><input type="date" name="from" value="{{ from_date }}"></label>
+      <label><span>To</span><input type="date" name="to" value="{{ to_date }}"></label>
+      <label>
+        <span>Account</span>
+        <select name="account">
+          <option value="">Any account</option>
+          {% for account in facets.accounts %}
+            <option value="{{ account }}"{% if account == selected_account %} selected{% endif %}>@{{ account }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        <span>Topic</span>
+        <select name="topic">
+          <option value="">Any topic</option>
+          {% for topic in facets.topics %}
+            <option value="{{ topic }}"{% if topic == selected_topic %} selected{% endif %}>{{ topic }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        <span>Keep</span>
+        <select name="kept">
+          <option value="">Any</option>
+          <option value="true"{% if selected_kept == "true" %} selected{% endif %}>Kept</option>
+          <option value="false"{% if selected_kept == "false" %} selected{% endif %}>Not kept</option>
+        </select>
+      </label>
+      <button class="button" type="submit">Search</button>
+    </div>
+  </form>
+
+  {% if search_error %}<p class="form-error" role="alert">{{ search_error }}</p>{% endif %}
+
+  <div class="results-heading">
+    <strong>{{ results.total }} result{% if results.total != 1 %}s{% endif %}</strong>
+    {% if q %}<span>for “{{ q }}”</span>{% endif %}
+  </div>
+
+  {% if results["items"] %}
+    <section class="archive-results" aria-label="Search results">
+      {% for tweet in results["items"] %}
+        <article class="archive-result">
+          <div class="result-date">{{ tweet.created_at|absolute_date }}</div>
+          <div>
+            <div class="result-author">@{{ tweet.author }} <time datetime="{{ tweet.created_at }}">{{ tweet.created_at|absolute_time }}</time></div>
+            <p>{{ tweet.text }}</p>
+          </div>
+        </article>
+      {% endfor %}
+    </section>
+
+    {% set last_page = ((results.total - 1) // results.page_size) + 1 %}
+    {% if last_page > 1 %}
+      <nav class="pagination" aria-label="Archive pages">
+        {% if results.page > 1 %}
+          <a href="{{ url_for('archive') }}?q={{ q|urlencode }}&from={{ from_date }}&to={{ to_date }}&account={{ selected_account|urlencode }}&topic={{ selected_topic|urlencode }}&kept={{ selected_kept }}&page={{ results.page - 1 }}">← Previous</a>
+        {% endif %}
+        <span>Page {{ results.page }} of {{ last_page }}</span>
+        {% if results.page < last_page %}
+          <a href="{{ url_for('archive') }}?q={{ q|urlencode }}&from={{ from_date }}&to={{ to_date }}&account={{ selected_account|urlencode }}&topic={{ selected_topic|urlencode }}&kept={{ selected_kept }}&page={{ results.page + 1 }}">Next →</a>
+        {% endif %}
+      </nav>
+    {% endif %}
+  {% else %}
+    <section class="empty-state compact">
+      <span class="empty-kicker">No matches</span>
+      <h2>Try a broader search.</h2>
+      <p>Remove a date, account, topic, or keep filter to widen the finite result set.</p>
+    </section>
+  {% endif %}
+{% endblock %}

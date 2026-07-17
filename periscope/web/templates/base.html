@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en" data-theme="light" data-accent="red">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>{{ title }} | Periscope</title>
+  <link rel="icon" href="{{ url_for('static', path='favicon.svg') }}" type="image/svg+xml">
+  <link rel="stylesheet" href="{{ url_for('static', path='periscope.css') }}">
+  <script src="{{ url_for('static', path='theme.js') }}"></script>
+  <script src="{{ url_for('static', path='htmx.min.js') }}" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#content">Skip to content</a>
+  <div class="app-shell">
+    <nav class="sidebar" aria-label="Primary navigation">
+      <a class="brand" href="{{ url_for('today') }}">
+        <strong>Periscope</strong>
+        <span>Read-only digest</span>
+      </a>
+
+      <div class="nav-list">
+        <a class="nav-link{% if page == 'today' %} is-active{% endif %}" href="{{ url_for('today') }}"{% if page == 'today' %} aria-current="page"{% endif %}>Today</a>
+        <a class="nav-link{% if page == 'feed' %} is-active{% endif %}" href="{{ url_for('feed') }}"{% if page == 'feed' %} aria-current="page"{% endif %}>Feed</a>
+        <a class="nav-link{% if page == 'archive' %} is-active{% endif %}" href="{{ url_for('archive') }}"{% if page == 'archive' %} aria-current="page"{% endif %}>Archive</a>
+        <a class="nav-link{% if page == 'discovery' %} is-active{% endif %}" href="{{ url_for('discovery') }}"{% if page == 'discovery' %} aria-current="page"{% endif %}>
+          <span>Discovery</span>
+          {% if discovery_count|default(0) > 0 %}
+            <span class="nav-badge" aria-label="{{ discovery_count }} pending candidates">{{ discovery_count }}</span>
+          {% endif %}
+        </a>
+        <a class="nav-link{% if page == 'weekly' %} is-active{% endif %}" href="{{ url_for('weekly') }}"{% if page == 'weekly' %} aria-current="page"{% endif %}>Weekly</a>
+        <a class="nav-link{% if page == 'settings' %} is-active{% endif %}" href="{{ url_for('settings') }}"{% if page == 'settings' %} aria-current="page"{% endif %}>Settings</a>
+      </div>
+
+      <div class="nav-meta">
+        {% set cookie_ok = health.cookie.ok if health is defined else true %}
+        <div class="status-line">
+          <span class="status-dot{% if not cookie_ok %} is-error{% endif %}" aria-hidden="true"></span>
+          <span>Cookie {% if cookie_ok %}OK{% else %}needs attention{% endif %}</span>
+        </div>
+        {% if health is defined and health.last_fetch %}
+          <div>Last fetch {{ health.last_fetch.started_at|absolute_time }}</div>
+        {% endif %}
+        {% if schedule_times is defined and schedule_times %}
+          <div>Daily {{ schedule_times|join(', ') }}</div>
+        {% endif %}
+        <div class="appearance-controls" aria-label="Appearance">
+          <button type="button" class="text-button" data-theme-toggle aria-label="Switch color theme">Theme</button>
+          <button type="button" class="text-button" data-accent-toggle aria-label="Switch accent color">Accent</button>
+        </div>
+      </div>
+    </nav>
+
+    <main class="main" id="content" tabindex="-1">
+      <div class="page">
+        <div class="request-error" data-request-error role="status" hidden></div>
+        {% block content %}{% endblock %}
+      </div>
+    </main>
+  </div>
+  <script src="{{ url_for('static', path='app.js') }}" defer></script>
+</body>
+</html>

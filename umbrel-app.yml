@@ -1,0 +1,21 @@
+manifestVersion: 1
+id: periscope
+category: social
+name: Periscope
+version: "0.1.0"
+tagline: A finite, private X digest
+description: >-
+  Periscope turns a curated X list into a finite daily digest, a searchable
+  local archive, weekly graph discovery, and private Telegram and MCP access.
+  Raw source posts and all derived state remain on your Umbrel.
+releaseNotes: ""
+developer: Periscope contributors
+website: ""
+dependencies: []
+repo: ""
+support: ""
+port: 3999
+gallery: []
+path: ""
+defaultUsername: ""
+defaultPassword: ""

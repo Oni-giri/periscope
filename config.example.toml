@@ -1,0 +1,50 @@
+[data]
+directory = "/data"
+database = "periscope.db"
+twscrape_database = "twscrape.db"
+
+[x]
+# Numeric ID of the private X list used as the curated timeline.
+list_id = 123456789
+handles = ["simonw", "example_account"]
+fetch_limit = 200
+resolve_threads = true
+thread_depth = 25
+
+[models]
+cheap = "claude-haiku-4-5"
+quality = "claude-sonnet-4-6"
+max_tokens = 4096
+# Keep pricing in configuration because it changes independently of the code.
+cheap_input_usd_per_million = 0.0
+cheap_output_usd_per_million = 0.0
+quality_input_usd_per_million = 0.0
+quality_output_usd_per_million = 0.0
+
+[prompts]
+# Prompt content is intentionally user-owned and can be added later.
+cluster = "/data/prompts/cluster_prompt.md"
+picks = "/data/prompts/picks_prompt.md"
+weekly = "/data/prompts/weekly_prompt.md"
+
+[picks]
+minimum = 0
+maximum = 5
+
+[schedule]
+timezone = "UTC"
+daily_times = ["07:30"]
+weekly_day = "sun"
+weekly_time = "09:00"
+feed_interval_minutes = 30
+
+[delivery]
+web_base_url = "http://periscope.local:3999"
+
+[[topics]]
+name = "Interpretability"
+min_faves = 20
+
+[[topics]]
+name = "Databases"
+min_faves = 30

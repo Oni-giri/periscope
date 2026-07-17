@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block content %}
+  <header class="page-header">
+    <h1>Discovery queue</h1>
+    <p class="lede">{{ candidates|length }} candidate{% if candidates|length != 1 %}s{% endif %} surfaced this week. Review is always explicit.</p>
+  </header>
+  {% include "partials/discovery_queue.html" %}
+{% endblock %}

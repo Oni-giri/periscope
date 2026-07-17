@@ -1,0 +1,29 @@
+version: "3.7"
+
+services:
+  app_proxy:
+    environment:
+      APP_HOST: periscope_server_1
+      APP_PORT: 3999
+
+  server:
+    build:
+      context: .
+    image: periscope:0.1.0
+    restart: on-failure
+    stop_grace_period: 30s
+    environment:
+      PERISCOPE_DATA_DIR: /data
+      PERISCOPE_MCP_ALLOW_WRITES: "${PERISCOPE_MCP_ALLOW_WRITES:-0}"
+    volumes:
+      - ${APP_DATA_DIR:-.}/data:/data
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:3999/health', timeout=3)"
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3

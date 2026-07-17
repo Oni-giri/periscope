@@ -1,0 +1,36 @@
+<section id="discovery-queue" aria-label="Discovery candidates">
+  {% if action_error %}
+    <p class="form-error" role="alert">{{ action_error }}</p>
+  {% endif %}
+  {% for candidate in candidates %}
+    <article class="candidate-row">
+      <div class="candidate-body">
+        <div class="candidate-title">
+          <strong>{{ candidate.stats.name|default(candidate.handle, true) }}</strong>
+          <span>@{{ candidate.handle }}</span>
+        </div>
+        {% if candidate.stats.bio %}<p>{{ candidate.stats.bio }}</p>{% endif %}
+        <div class="candidate-reason">{{ candidate.reason }}</div>
+        <div class="candidate-stats">
+          <span>{{ candidate.cofollow_count }} co-follows</span>
+          <span>{{ candidate.stats.followers|default(0) }} followers</span>
+          <span>{{ candidate.overlap_pct }}% graph overlap</span>
+        </div>
+      </div>
+      <div class="candidate-actions">
+        <form method="post" action="{{ url_for('accept_candidate', handle=candidate.handle) }}" hx-post="{{ url_for('accept_candidate', handle=candidate.handle) }}" hx-target="#discovery-queue" hx-swap="outerHTML">
+          <button class="button" type="submit">Accept</button>
+        </form>
+        <form method="post" action="{{ url_for('reject_candidate', handle=candidate.handle) }}" hx-post="{{ url_for('reject_candidate', handle=candidate.handle) }}" hx-target="#discovery-queue" hx-swap="outerHTML">
+          <button class="button button-muted" type="submit">Reject</button>
+        </form>
+      </div>
+    </article>
+  {% else %}
+    <div class="empty-state">
+      <strong>Queue empty</strong>
+      <p>New candidates surface during the weekly graph run.</p>
+    </div>
+  {% endfor %}
+  <p class="section-note">Rejected accounts are suppressed for 90 days.</p>
+</section>

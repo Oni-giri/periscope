@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block content %}
+{% if digest %}
+  <header class="page-header">
+    <div class="header-row">
+      <div>
+        <h1>{{ digest.date|date_heading }}</h1>
+        <div class="metadata">
+          <span>{{ digest.stats.stories }} stories</span>
+          <span>{{ digest.stats.picks }} picks</span>
+          <span>{{ digest.stats["items"] }} items from {{ digest.stats.accounts }} accounts</span>
+          <span>Assembled {{ digest.assembled_at|absolute_time }}</span>
+        </div>
+      </div>
+      <div class="date-nav" aria-label="Digest dates">
+        {% if previous_date %}
+          <a class="square-button" href="{{ url_for('dated_digest', digest_date=previous_date) }}" aria-label="Older digest">←</a>
+        {% else %}
+          <span class="square-button is-disabled" aria-hidden="true">←</span>
+        {% endif %}
+        <details class="calendar-menu">
+          <summary>Calendar</summary>
+          <div class="calendar-list">
+            {% for available_date in digest_dates %}
+              <a href="{{ url_for('dated_digest', digest_date=available_date) }}"{% if available_date == digest.date %} aria-current="date"{% endif %}>{{ available_date|absolute_date }}</a>
+            {% endfor %}
+          </div>
+        </details>
+        {% if next_date %}
+          <a class="square-button" href="{{ url_for('dated_digest', digest_date=next_date) }}" aria-label="Newer digest">→</a>
+        {% else %}
+          <span class="square-button is-disabled" aria-hidden="true">→</span>
+        {% endif %}
+      </div>
+    </div>
+  </header>
+
+  <section aria-label="Digest items">
+    {% set story = namespace(number=0) %}
+    {% for item in digest["items"] %}
+      {% if item.type == "cluster" %}
+        {% set cluster = digest.clusters|selectattr("id", "equalto", item.id)|first %}
+        {% set story.number = story.number + 1 %}
+        <article class="story-row">
+          <div class="story-number">{{ "%02d"|format(story.number) }}</div>
+          <div class="story-body">
+            <h2><a href="{{ url_for('cluster_detail', cluster_id=cluster.id) }}">{{ cluster.headline }}</a></h2>
+            <p>{{ cluster.synthesis }}</p>
+            <div class="story-meta">
+              <div class="avatar-stack" aria-label="{{ cluster.tweets|length }} sources">
+                {% for tweet in cluster.tweets[:4] %}
+                  <span>{{ tweet.author[:2]|upper }}</span>
+                {% endfor %}
+              </div>
+              <span>{{ cluster.tweets|length }} posts</span>
+              <a class="accent-link push-right" href="{{ url_for('cluster_detail', cluster_id=cluster.id) }}">Expand ↓</a>
+            </div>
+          </div>
+        </article>
+      {% else %}
+        {% set pick = digest.picks|selectattr("id", "equalto", item.id)|first %}
+        <article class="pick-row">
+          <div class="pick-mark" aria-label="Pick">★</div>
+          <div class="pick-body">
+            <div class="pick-header">
+              <span class="avatar">{{ pick.tweet.author[:2]|upper }}</span>
+              <strong>@{{ pick.tweet.author }}</strong>
+              <time datetime="{{ pick.tweet.created_at }}">{{ pick.tweet.created_at|absolute_time }}</time>
+              <span class="tag">{{ pick.tag }}</span>
+            </div>
+            <blockquote>{{ pick.tweet.text }}</blockquote>
+            <div class="pick-reason">{{ pick.reason }}</div>
+          </div>
+        </article>
+      {% endif %}
+    {% endfor %}
+  </section>
+
+  <footer class="page-footer">
+    <span>End of digest</span>
+    <a href="{{ url_for('archive') }}">Search the archive</a>
+  </footer>
+{% else %}
+  <section class="empty-state">
+    <span class="empty-kicker">No digest yet</span>
+    <h1>Your finite reading window will appear here.</h1>
+    <p>Run the daily job after configuring X and curation, or use the fixture-backed mock command from the README.</p>
+    <a class="button" href="{{ url_for('feed') }}">Open feed</a>
+  </section>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,10 @@
+{% set keep_id = tweet_id if tweet_id is defined else tweet.id %}
+{% set keep_active = kept if kept is defined else tweet.kept %}
+<button
+  class="keep-button{% if keep_active %} is-kept{% endif %}"
+  type="button"
+  aria-label="{% if keep_active %}Remove local keep{% else %}Keep locally{% endif %}"
+  aria-pressed="{% if keep_active %}true{% else %}false{% endif %}"
+  hx-post="{{ url_for('toggle_keep', tweet_id=keep_id) }}"
+  hx-swap="outerHTML"
+>{% if keep_active %}★{% else %}☆{% endif %}</button>

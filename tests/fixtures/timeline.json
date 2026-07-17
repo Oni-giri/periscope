@@ -1,0 +1,90 @@
+{
+  "tweets": [
+    {
+      "id": "1001",
+      "author": "data_builder",
+      "created_at": "2026-07-16T07:05:00+00:00",
+      "text": "Released a SQLite diff tool with row-level migration output.",
+      "likeCount": 140,
+      "retweetCount": 22,
+      "replyCount": 2,
+      "user": {"username": "data_builder", "followersCount": 8400},
+      "links": [{"url": "https://example.test/sqlite-diff"}],
+      "conversationId": "1001",
+      "thread": [
+        {
+          "id": "1002",
+          "author": "data_builder",
+          "created_at": "2026-07-16T07:06:00+00:00",
+          "text": "The database comparison is deterministic and emits JSON too.",
+          "likeCount": 35,
+          "retweetCount": 4,
+          "user": {"username": "data_builder", "followersCount": 8400},
+          "conversationId": "1001",
+          "inReplyToTweetId": "1001"
+        }
+      ]
+    },
+    {
+      "id": "1003",
+      "author": "query_notes",
+      "created_at": "2026-07-16T07:20:00+00:00",
+      "text": "Postgres query planning notes from a week of replication debugging.",
+      "likeCount": 72,
+      "retweetCount": 8,
+      "user": {"username": "query_notes", "followersCount": 3100},
+      "conversationId": "1003"
+    },
+    {
+      "id": "1004",
+      "author": "model_reader",
+      "created_at": "2026-07-16T08:10:00+00:00",
+      "text": "A careful model evaluation shows the feature result does not transfer.",
+      "likeCount": 210,
+      "retweetCount": 30,
+      "user": {"username": "model_reader", "followersCount": 22000},
+      "conversationId": "1004"
+    },
+    {
+      "id": "1005",
+      "author": "small_lab",
+      "created_at": "2026-07-16T08:25:00+00:00",
+      "text": "Launched an open-source dataset for interpretability evals.",
+      "likeCount": 95,
+      "retweetCount": 18,
+      "user": {"username": "small_lab", "followersCount": 1500},
+      "links": [{"url": "https://example.test/evals"}],
+      "conversationId": "1005"
+    },
+    {
+      "id": "1006",
+      "author": "engagement_account",
+      "created_at": "2026-07-16T08:40:00+00:00",
+      "text": "Hot take: every model eval is broken. Thoughts?",
+      "likeCount": 900,
+      "retweetCount": 250,
+      "user": {"username": "engagement_account", "followersCount": 400000},
+      "conversationId": "1006"
+    },
+    {
+      "id": "1007",
+      "author": "home_operator",
+      "created_at": "2026-07-16T09:00:00+00:00",
+      "text": "Tailscale simplified this self-hosted homelab container setup.",
+      "likeCount": 61,
+      "retweetCount": 6,
+      "user": {"username": "home_operator", "followersCount": 2700},
+      "conversationId": "1007",
+      "quotedTweet": {
+        "id": "9001",
+        "author": "infra_project",
+        "created_at": "2026-07-15T18:00:00+00:00",
+        "text": "Release notes for the networking library are now available.",
+        "likeCount": 180,
+        "retweetCount": 20,
+        "user": {"username": "infra_project", "followersCount": 12000},
+        "conversationId": "9001"
+      }
+    }
+  ]
+}

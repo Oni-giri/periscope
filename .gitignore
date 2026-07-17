@@ -1,0 +1,18 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+*.egg-info/
+proofshot-artifacts/
+
+# Runtime state and credentials
+data/
+*.db
+*.db-shm
+*.db-wal
+config.toml
+secrets.env
