@@ -5,10 +5,6 @@ LLM-clusters tweets into a finite daily digest with verbatim "picks", surfaces
 discovery candidates from the social graph, and delivers via web UI, Telegram,
 and MCP. Runs on a homelab (Umbrel) box.
 
-**Companion file:** `Periscope_dc.html` — the complete visual mock (all 7 pages,
-Swiss style, light/dark themes, mobile breakpoints). Treat it as the design
-source of truth. Port it; do not redesign it.
-
 ---
 
 ## 0. Design principles (hard requirements, not suggestions)
@@ -88,7 +84,7 @@ periscope/
       app.py           # FastAPI factory, APScheduler startup
       routes/          # today.py feed.py archive.py discovery.py weekly.py
                        # settings.py health.py cluster_detail.py
-      templates/       # ported from Periscope_dc.html (see §6)
+      templates/       # server-rendered pages (see §6)
       static/periscope.css
     telegram/bot.py    # digest push, alerts, [keep]/[add] buttons
     mcp_server.py      # tools per §8
@@ -165,25 +161,22 @@ groups by fetch batch.
    deltas), suggested adds/drops, **picks-vs-keeps diff** ("you kept N tweets
    the digest didn't pick" — list them; this is the calibration surface).
 
-## 6. Web UI — porting the mock
+## 6. Web UI
 
-`Periscope_dc.html` contains all pages stacked, styled inline with CSS
-variables, tabbed via a missing `support.js`, with `{{ var }}` placeholders.
+The interface uses a restrained Swiss style, CSS-variable light/dark themes,
+and finite responsive layouts.
 
-Port rules:
-- Extract the `<style>` block + inline styles into `static/periscope.css`.
-  Keep the CSS-variable theming (`--bg/--fg/--accent`, `data-theme`,
-  `data-accent`) exactly — dark mode and accent switch come free.
+Implementation rules:
+- Keep CSS-variable theming (`--bg/--fg/--accent`, `data-theme`,
+  `data-accent`) in `static/periscope.css`.
 - Split into Jinja: `base.html` (sidebar shell) + one template per page.
-  The mock's `data-r="…"` attributes mark the component seams; `{{ … }}`
-  placeholders map 1:1 to Jinja context vars.
 - Preserve mobile media queries as-is.
 - Sidebar: nav (Today, Feed, Archive, Discovery+badge, Weekly, Settings),
   next-fetch time, **add a cookie-status dot** (green/red) visible on every
-  page — mock only shows status in Settings; this is a required addition.
+  page.
   Discovery badge hidden entirely when queue empty (never show "0").
 - Cluster detail: add explicit "← Back to digest" link top and bottom
-  (missing at bottom in mock).
+  for reliable navigation.
 - Routes:
   - `GET /` and `/digest/{date}` — today + archive digests, prev/next + calendar
   - `GET /cluster/{id}` — detail (log the view for topic decay)
@@ -242,9 +235,9 @@ periscope.jobs.daily` produces a digest row and a Telegram message.
 Include a `--mock-x` mode: xclient loads fixture JSON instead of hitting X,
 so the pipeline and all later phases are testable without credentials.
 
-**Phase 2 — web.** Port mock to templates; Today, Feed (keep toggle works,
-persists), Cluster detail, Archive FTS. Accept: pixel-faithful to mock in
-light + dark at 1440px and 390px widths.
+**Phase 2 — web.** Build the templates; Today, Feed (keep toggle works,
+persists), Cluster detail, Archive FTS. Accept: consistent layouts in light +
+dark at 1440px and 390px widths.
 
 **Phase 3 — discovery + weekly.** Snapshots, deltas, mining, weekly report
 page + push, Discovery queue accept/reject wired to follow op.

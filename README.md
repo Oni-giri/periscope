@@ -4,9 +4,8 @@ Periscope is a self-hosted, read-only X/Twitter digest. It turns a curated list
 timeline into a finite daily set of clustered stories and standalone picks,
 stores the source material in SQLite, and pushes a short summary to Telegram.
 
-The product and architecture contract lives in [plan.md](plan.md).
-[Periscope_dc.html](Periscope_dc.html) is a visual design reference only; the
-production interface is a separate FastAPI, Jinja, HTMX application.
+The product and architecture contract lives in [plan.md](plan.md). The
+production interface is a FastAPI, Jinja, HTMX application.
 
 ## Implemented system
 
