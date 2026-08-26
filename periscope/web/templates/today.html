@@ -70,6 +70,14 @@
             </div>
             <blockquote>{{ pick.tweet.text }}</blockquote>
             <div class="pick-reason">{{ pick.reason }}</div>
+            {% if pick.commentary %}
+              <p class="pick-commentary">{{ pick.commentary }}</p>
+            {% endif %}
+            {% if pick.tweet.media %}
+              <figure class="pick-media">
+                <img src="{{ pick.tweet.media[0] }}" alt="">
+              </figure>
+            {% endif %}
           </div>
         </article>
       {% endif %}

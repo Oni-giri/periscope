@@ -492,6 +492,27 @@ select:focus-visible {
   text-transform: uppercase;
 }
 
+
+.pick-commentary {
+  max-width: 60ch;
+  margin: 10px 0 0;
+  color: var(--fg);
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.pick-media {
+  margin: 14px 0 0;
+  max-width: 420px;
+}
+
+.pick-media img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--rule);
+}
+
 .pick-body blockquote {
   max-width: 60ch;
   margin: 0;

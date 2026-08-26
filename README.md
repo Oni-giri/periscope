@@ -80,6 +80,17 @@ uv run python -m periscope.jobs.daily \
   --date 2026-07-16
 ```
 
+
+Load an already-curated digest JSON (no X fetch, no Anthropic). Tweets, picks,
+optional cluster stories, commentary, and image URLs are stored as-is:
+
+```bash
+uv run python -m periscope.jobs.ingest \
+  --config config.example.toml \
+  --data-dir ./data \
+  --file tests/fixtures/agent-digest.json
+```
+
 Run ingestion only:
 
 ```bash
