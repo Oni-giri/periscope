@@ -17,3 +17,5 @@ data/
 config.toml
 secrets.env
 Periscope_dc.html
+.env
+chrome-profile/

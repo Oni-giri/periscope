@@ -91,6 +91,41 @@ uv run python -m periscope.jobs.ingest \
   --file tests/fixtures/agent-digest.json
 ```
 
+## X scrape and GLM curator
+
+Periscope itself does not fetch the algo feed. These optional CLIs dump signed-in
+home timelines, rank them with a cheap OpenRouter model, and write the ingest JSON
+the command above already accepts.
+
+```bash
+uv sync --extra scrape
+uv run playwright install chromium
+
+uv run python -m periscope.x_scrape.scrape_feeds \
+  --out-dir ./data/x-dumps \
+  --profile ./data/chrome-profile \
+  --watermark ./data/following_watermark.json \
+  --min-foryou 200 --min-following 200 \
+  --timelines Tech,Crypto,Business --min-timeline 100
+
+uv run python -m periscope.x_scrape.curate_feeds --in-dir ./data/x-dumps
+
+uv run python -m periscope.x_scrape.shortlist_to_digest \
+  --shortlist ./data/x-dumps/shortlist.json \
+  --date 2026-08-28
+
+uv run python -m periscope.jobs.ingest \
+  --config config.example.toml \
+  --data-dir ./data \
+  --file ./data/x-dumps/digest-2026-08-28.json
+```
+
+The Chrome profile must already be signed in as the X account. Put
+`OPENROUTER_API_KEY` in `/data/secrets.env` or the environment. Dumps, the
+Chrome profile, and secrets stay in `data/` and are gitignored. The curator
+does not tweet, like, follow, or reply.
+
+
 Run ingestion only:
 
 ```bash
