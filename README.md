@@ -110,6 +110,8 @@ uv run python -m periscope.x_scrape.scrape_feeds \
 
 uv run python -m periscope.x_scrape.curate_feeds --in-dir ./data/x-dumps
 
+uv run python -m periscope.x_scrape.hydrate_shortlist --shortlist ./data/x-dumps/shortlist.json
+
 uv run python -m periscope.x_scrape.shortlist_to_digest \
   --shortlist ./data/x-dumps/shortlist.json \
   --date 2026-08-28
