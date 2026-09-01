@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run scrape → curate → hydrate → shortlist_to_digest → ingest as one CLI."""
+"""Run scrape → curate → hydrate → digest → enrich_actions → ingest as one CLI."""
 
 from __future__ import annotations
 
@@ -43,6 +43,7 @@ def main() -> int:
     parser.add_argument("--skip-curate", action="store_true")
     parser.add_argument("--skip-hydrate", action="store_true")
     parser.add_argument("--skip-digest", action="store_true")
+    parser.add_argument("--skip-enrich", action="store_true")
     parser.add_argument("--skip-ingest", action="store_true")
     parser.add_argument(
         "--cache-media",
@@ -149,6 +150,26 @@ def main() -> int:
         ]
         digest_cmd.append("--cache-media" if args.cache_media else "--no-cache-media")
         _run("shortlist_to_digest", digest_cmd)
+
+    if not args.skip_enrich and digest_path.is_file():
+        enrich_cmd = [
+            py,
+            "-m",
+            "periscope.x_scrape.enrich_actions",
+            "--digest",
+            str(digest_path),
+        ]
+        if args.model:
+            enrich_cmd.extend(["--model", args.model])
+        # Soft-fail: heuristics still write; LLM missing key is non-fatal.
+        print("==> enrich_actions", flush=True)
+        print(" ".join(enrich_cmd), flush=True)
+        result = subprocess.run(enrich_cmd, check=False)
+        if result.returncode not in (0,):
+            print(
+                f"enrich_actions exited {result.returncode}; continuing with digest as-is",
+                flush=True,
+            )
 
     if not args.skip_ingest:
         _run(

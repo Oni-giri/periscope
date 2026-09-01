@@ -26,6 +26,7 @@ from periscope.web.routes import (
     discovery,
     feed,
     health,
+    ideas,
     settings,
     today,
     weekly,
@@ -138,6 +139,7 @@ def create_app(
     app.include_router(archive.router)
     app.include_router(cluster_detail.router)
     app.include_router(discovery.router)
+    app.include_router(ideas.router)
     app.include_router(weekly.router)
     app.include_router(settings.router)
     app.include_router(health.router)

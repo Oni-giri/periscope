@@ -48,7 +48,22 @@
       "tweet_id": "1959000000000000001",
       "tag": "AI",
       "reason": "Useful eval, not a model launch.",
-      "commentary": "This is the kind of AI post worth keeping: a concrete failure mode, not a demo. If a tool only looks good on needle-in-haystack, it is not ready for the way you actually search."
+      "commentary": "This is the kind of AI post worth keeping: a concrete failure mode, not a demo. If a tool only looks good on needle-in-haystack, it is not ready for the way you actually search.",
+      "actions": [
+        {
+          "type": "read",
+          "label": "Read the long-context eval notes",
+          "url": "https://example.test/eval-notes"
+        },
+        {
+          "type": "steal",
+          "label": "Steal: test beyond needle-in-haystack",
+          "detail": "Reuse as an eval gate for retrieval tools"
+        }
+      ],
+      "nugget": true,
+      "actionable": true,
+      "nugget_why": "Concrete failure mode you can reuse as an eval gate."
     }
   ]
 }

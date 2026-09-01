@@ -29,6 +29,7 @@
             <span class="nav-badge" aria-label="{{ discovery_count }} pending candidates">{{ discovery_count }}</span>
           {% endif %}
         </a>
+        <a class="nav-link{% if page == 'ideas' %} is-active{% endif %}" href="{{ url_for('ideas') }}"{% if page == 'ideas' %} aria-current="page"{% endif %}>Ideas</a>
         <a class="nav-link{% if page == 'weekly' %} is-active{% endif %}" href="{{ url_for('weekly') }}"{% if page == 'weekly' %} aria-current="page"{% endif %}>Weekly</a>
         <a class="nav-link{% if page == 'settings' %} is-active{% endif %}" href="{{ url_for('settings') }}"{% if page == 'settings' %} aria-current="page"{% endif %}>Settings</a>
       </div>

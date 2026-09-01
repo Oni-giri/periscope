@@ -9,6 +9,7 @@ from collections import defaultdict
 from datetime import UTC, date, datetime
 from pathlib import Path
 
+from periscope.x_scrape.enrich_actions import enrich_pick_fields
 from periscope.x_scrape.media_cache import cache_digest_media
 
 TAG = {
@@ -45,14 +46,29 @@ def convert(keepers: list[dict], digest_date: str) -> dict:
             }
         )
         why = curation.get("why") or "curated"
-        picks.append(
-            {
-                "tweet_id": sid,
-                "tag": tag,
-                "reason": why[:80],
-                "commentary": why,
-            }
+        pick = {
+            "tweet_id": sid,
+            "tag": tag,
+            "reason": why[:80],
+            "commentary": why,
+        }
+        if curation.get("actions"):
+            pick["actions"] = curation["actions"]
+        for flag in ("nugget", "actionable"):
+            if flag in curation:
+                pick[flag] = bool(curation[flag])
+        if curation.get("nugget_why"):
+            pick["nugget_why"] = str(curation["nugget_why"])
+        enrich_pick_fields(
+            pick,
+            tweet={
+                "id": sid,
+                "author": handle,
+                "text": keeper.get("text") or "",
+                "urls": [keeper["tweet_url"]] if keeper.get("tweet_url") else [],
+            },
         )
+        picks.append(pick)
         by_topic[tag].append(sid)
 
     clusters = []

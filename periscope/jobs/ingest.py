@@ -77,9 +77,7 @@ def _cluster_drafts(document: dict[str, Any]) -> list[dict[str, Any]]:
         tweet_ids = cluster.get("tweet_ids")
         if not tweet_ids:
             tweet_ids = [
-                str(tweet["id"])
-                for tweet in cluster.get("tweets") or []
-                if tweet.get("id")
+                str(tweet["id"]) for tweet in cluster.get("tweets") or [] if tweet.get("id")
             ]
         drafts.append(
             {
@@ -92,9 +90,12 @@ def _cluster_drafts(document: dict[str, Any]) -> list[dict[str, Any]]:
     return drafts
 
 
-def _pick_drafts(document: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[str, str]]:
+def _pick_drafts(
+    document: dict[str, Any],
+) -> tuple[list[dict[str, Any]], dict[str, str], dict[str, dict[str, Any]]]:
     drafts = []
     commentary_by_id: dict[str, str] = {}
+    extras_by_id: dict[str, dict[str, Any]] = {}
     for pick in document.get("picks") or []:
         tweet_id = str(pick.get("tweet_id") or (pick.get("tweet") or {}).get("id") or "")
         if not tweet_id:
@@ -102,35 +103,47 @@ def _pick_drafts(document: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[s
         commentary = str(pick.get("commentary") or "").strip()
         if commentary:
             commentary_by_id[tweet_id] = commentary
-        drafts.append(
-            {
-                "tweet_id": tweet_id,
-                "tag": pick.get("tag", "SIGNAL"),
-                "reason": pick.get("reason") or commentary[:80] or "curated",
-            }
-        )
-    return drafts, commentary_by_id
+        draft: dict[str, Any] = {
+            "tweet_id": tweet_id,
+            "tag": pick.get("tag", "SIGNAL"),
+            "reason": pick.get("reason") or commentary[:80] or "curated",
+        }
+        extras: dict[str, Any] = {}
+        if pick.get("actions"):
+            extras["actions"] = pick["actions"]
+            draft["actions"] = pick["actions"]
+        for flag in ("nugget", "actionable"):
+            if flag in pick:
+                extras[flag] = bool(pick[flag])
+                draft[flag] = bool(pick[flag])
+        if pick.get("nugget_why"):
+            extras["nugget_why"] = str(pick["nugget_why"])
+            draft["nugget_why"] = str(pick["nugget_why"])
+        if extras:
+            extras_by_id[tweet_id] = extras
+        drafts.append(draft)
+    return drafts, commentary_by_id, extras_by_id
 
 
 def _attach_media_and_commentary(
     digest: dict[str, Any],
     tweets: list[dict[str, Any]],
     commentary_by_id: dict[str, str],
+    extras_by_id: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     media_by_id = {
-        str(tweet["id"]): list(tweet.get("media") or [])
-        for tweet in tweets
-        if tweet.get("media")
+        str(tweet["id"]): list(tweet.get("media") or []) for tweet in tweets if tweet.get("media")
     }
+    extras_by_id = extras_by_id or {}
     for pick in digest["picks"]:
         tweet_id = str(pick["tweet_id"])
         if tweet_id in commentary_by_id:
             pick["commentary"] = commentary_by_id[tweet_id]
+        for key, value in extras_by_id.get(tweet_id, {}).items():
+            pick[key] = value
         suffixes = (".jpg", ".jpeg", ".png", ".webp", ".gif")
         media = media_by_id.get(tweet_id) or [
-            url
-            for url in pick["tweet"].get("urls", [])
-            if str(url).lower().endswith(suffixes)
+            url for url in pick["tweet"].get("urls", []) if str(url).lower().endswith(suffixes)
         ]
         if media:
             pick["tweet"]["media"] = media
@@ -183,7 +196,7 @@ def run_ingest(
             row["media"] = media
 
     cluster_drafts = _cluster_drafts(document)
-    pick_drafts, commentary_by_id = _pick_drafts(document)
+    pick_drafts, commentary_by_id, extras_by_id = _pick_drafts(document)
     digest = assemble_digest(
         digest_date=target_date,
         assembled_at=assembled_at,
@@ -192,7 +205,7 @@ def run_ingest(
         pick_drafts=pick_drafts,
         fetch_new_items=new_items,
     )
-    digest = _attach_media_and_commentary(digest, tweets, commentary_by_id)
+    digest = _attach_media_and_commentary(digest, tweets, commentary_by_id, extras_by_id)
     decisions = [
         {
             "tweet_id": pick["tweet_id"],

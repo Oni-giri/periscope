@@ -150,6 +150,35 @@ curator does not tweet, like, follow, or reply. Today serves cached images from
 `/media/...` when present and keeps original remote URLs if a download fails.
 
 
+## Actions, nuggets, and idea inbox
+
+Today is not only news. Each pick can carry 1–3 typed actions (`try`, `read`,
+`watch`, `steal`, `follow`) with open / copy / **Park in inbox** controls. A
+**Nuggets** lane surfaces picks marked `nugget` or `actionable` (ideas and
+techniques, not just breaking topic posts).
+
+The local **Ideas** inbox (SQLite `ideas` table) stores parked actions. Park,
+mark done, drop, or edit a note — nothing syncs to X. Weekly also lists parked
+ideas older than 7 days that were never touched.
+
+### How enrich_actions fits `periscope-digest`
+
+After hydrate and `shortlist_to_digest`, the pipeline runs
+`periscope.x_scrape.enrich_actions` on the digest JSON (skip with
+`--skip-enrich`). Without `OPENROUTER_API_KEY` it soft-fails to heuristics:
+GitHub/Hugging Face → `try`, docs → `read`, exploit/oracle language → `watch`,
+follow mentions → `follow`. With a key it uses OpenRouter `glm-5.3-flash` the
+same way as `curate_feeds`, filling `actions` (max 3) plus `nugget` /
+`actionable` / `nugget_why`. Ingest preserves those fields on the rendered
+digest.
+
+```bash
+uv run python -m periscope.x_scrape.enrich_actions \
+  --digest ./data/x-dumps/digest-2026-09-01.json
+```
+
+
+
 Run ingestion only:
 
 ```bash

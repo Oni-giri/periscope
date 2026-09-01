@@ -1,0 +1,38 @@
+{% if actions %}
+  <div class="action-strip" aria-label="Actions">
+    {% for action in actions[:3] %}
+      <div class="action-chip">
+        <span class="action-badge action-{{ action.type }}">{{ action.type }}</span>
+        <span class="action-label">{{ action.label }}</span>
+        {% if action.detail %}
+          <span class="action-detail">{{ action.detail }}</span>
+        {% endif %}
+        <div class="action-buttons">
+          {% if action.url %}
+            <a class="text-button" href="{{ action.url }}" rel="noopener noreferrer" target="_blank">Open</a>
+          {% endif %}
+          <button
+            type="button"
+            class="text-button"
+            data-copy="{{ action.detail or action.label }}"
+          >Copy</button>
+          <form
+            class="park-form"
+            hx-post="{{ url_for('park_idea') }}"
+            hx-swap="outerHTML"
+            hx-target="this"
+          >
+            <input type="hidden" name="title" value="{{ action.label }}">
+            <input type="hidden" name="action_type" value="{{ action.type }}">
+            <input type="hidden" name="url" value="{{ action.url or '' }}">
+            <input type="hidden" name="tweet_id" value="{{ tweet_id }}">
+            <input type="hidden" name="handle" value="{{ handle }}">
+            <input type="hidden" name="source_digest_date" value="{{ digest_date }}">
+            <input type="hidden" name="note" value="{{ action.detail or '' }}">
+            <button type="submit" class="text-button">Park in inbox</button>
+          </form>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+{% endif %}
