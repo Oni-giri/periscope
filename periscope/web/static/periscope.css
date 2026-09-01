@@ -492,6 +492,96 @@ select:focus-visible {
   text-transform: uppercase;
 }
 
+
+.pick-commentary {
+  max-width: 60ch;
+  margin: 10px 0 0;
+  color: var(--fg);
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.pick-media {
+  margin: 14px 0 0;
+  max-width: 420px;
+}
+
+.pick-media img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--rule);
+}
+
+.pick-media-gallery {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  max-width: 520px;
+}
+
+.pick-media-gallery img {
+  width: 100%;
+  height: 100%;
+  max-height: 220px;
+  object-fit: cover;
+}
+
+.author-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.author-link:hover {
+  color: var(--accent);
+}
+
+.open-on-x {
+  color: var(--fg-2);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+}
+
+.open-on-x:hover {
+  color: var(--accent);
+}
+
+.topic-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.topic-chip {
+  appearance: none;
+  margin: 0;
+  padding: 5px 10px;
+  border: 1px solid var(--rule-2);
+  background: transparent;
+  color: var(--fg-2);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.topic-chip:hover {
+  border-color: var(--fg);
+  color: var(--fg);
+}
+
+.topic-chip.is-active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
 .pick-body blockquote {
   max-width: 60ch;
   margin: 0;
@@ -1549,4 +1639,169 @@ input::placeholder {
     margin-inline: -20px;
     padding-inline: 4px;
   }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.nuggets-lane {
+  margin: 0 0 28px;
+  padding: 18px 0 8px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.nugget-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.nugget-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  border: 1px solid var(--rule);
+  color: inherit;
+  text-decoration: none;
+  background: color-mix(in srgb, var(--accent) 4%, transparent);
+}
+
+.nugget-card:hover {
+  border-color: var(--accent);
+}
+
+.nugget-kicker {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.nugget-card span:last-child {
+  color: var(--fg-2);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.action-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+  max-width: 64ch;
+}
+
+.action-chip {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--rule);
+  background: var(--bg);
+}
+
+.action-badge {
+  display: inline-block;
+  padding: 1px 7px;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  align-self: start;
+}
+
+.action-label {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.action-detail {
+  grid-column: 2;
+  color: var(--fg-2);
+  font-size: 12px;
+}
+
+.action-buttons {
+  grid-column: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  align-items: center;
+}
+
+.park-form {
+  display: inline;
+  margin: 0;
+}
+
+.park-confirm {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.idea-row {
+  padding: 22px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.idea-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.idea-header time {
+  margin-left: auto;
+  color: var(--fg-2);
+  font-size: 12px;
+}
+
+.idea-note-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.idea-note-form input[type="text"] {
+  flex: 1 1 220px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--rule);
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.idea-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.flash-note {
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.topic-filters a.topic-chip {
+  text-decoration: none;
 }

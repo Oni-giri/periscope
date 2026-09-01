@@ -80,6 +80,105 @@ uv run python -m periscope.jobs.daily \
   --date 2026-07-16
 ```
 
+
+Load an already-curated digest JSON (no X fetch, no Anthropic). Tweets, picks,
+optional cluster stories, commentary, and image URLs are stored as-is:
+
+```bash
+uv run python -m periscope.jobs.ingest \
+  --config config.example.toml \
+  --data-dir ./data \
+  --file tests/fixtures/agent-digest.json
+```
+
+## X scrape and GLM curator
+
+Periscope itself does not fetch the algo feed. The happy path is one pipeline CLI
+that scrapes signed-in home timelines, ranks them with a cheap OpenRouter model,
+hydrates truncated keepers, caches images under `data/media/`, converts to ingest
+JSON, and loads the digest:
+
+```bash
+uv sync --extra scrape
+uv run playwright install chromium
+
+# Chrome profile via env (or pass --profile)
+export PERISCOPE_X_CHROME_PROFILE=./data/chrome-profile
+
+uv run periscope-digest \
+  --out-dir ./data/x-dumps \
+  --watermark ./data/following_watermark.json \
+  --config config.example.toml \
+  --data-dir ./data \
+  --date 2026-08-28
+```
+
+Skip steps when replaying an existing dump:
+
+```bash
+uv run periscope-digest --skip-scrape --date 2026-08-28
+```
+
+Individual stages remain available:
+
+```bash
+uv run python -m periscope.x_scrape.scrape_feeds \
+  --out-dir ./data/x-dumps \
+  --profile ./data/chrome-profile \
+  --watermark ./data/following_watermark.json \
+  --min-foryou 200 --min-following 200 \
+  --timelines Tech,Crypto,Business --min-timeline 100
+
+uv run python -m periscope.x_scrape.curate_feeds --in-dir ./data/x-dumps
+
+uv run python -m periscope.x_scrape.hydrate_shortlist --shortlist ./data/x-dumps/shortlist.json
+
+uv run python -m periscope.x_scrape.shortlist_to_digest \
+  --shortlist ./data/x-dumps/shortlist.json \
+  --date 2026-08-28
+
+uv run python -m periscope.jobs.ingest \
+  --config config.example.toml \
+  --data-dir ./data \
+  --file ./data/x-dumps/digest-2026-08-28.json
+```
+
+The Chrome profile must already be signed in as the X account. Put
+`OPENROUTER_API_KEY` in `/data/secrets.env` or the environment. Dumps, cached
+media, the Chrome profile, and secrets stay in `data/` and are gitignored. The
+curator does not tweet, like, follow, or reply. Today serves cached images from
+`/media/...` when present and keeps original remote URLs if a download fails.
+
+
+## Actions, nuggets, and idea inbox
+
+Today is not only news. Each pick can carry 1–3 typed actions (`try`, `read`,
+`watch`, `steal`, `follow`) with open / copy / **Park in inbox** controls. A
+**Nuggets** lane surfaces picks marked `nugget` or `actionable` (ideas and
+techniques, not just breaking topic posts).
+
+The local **Ideas** inbox (SQLite `ideas` table) stores parked actions. Park,
+mark done, drop, or edit a note — nothing syncs to X. Weekly also lists parked
+ideas older than 7 days that were never touched.
+
+### How enrich_actions fits `periscope-digest`
+
+After hydrate and `shortlist_to_digest`, the pipeline runs
+`periscope.x_scrape.enrich_actions` on the digest JSON (skip with
+`--skip-enrich`). Without `OPENROUTER_API_KEY` it soft-fails to heuristics:
+GitHub/Hugging Face → `try`, docs → `read`, exploit/oracle language → `watch`,
+follow mentions → `follow`. With a key it uses OpenRouter `glm-5.3-flash` the
+same way as `curate_feeds`, filling `actions` (max 3) plus `nugget` /
+`actionable` / `nugget_why`. Ingest preserves those fields on the rendered
+digest.
+
+```bash
+uv run python -m periscope.x_scrape.enrich_actions \
+  --digest ./data/x-dumps/digest-2026-09-01.json
+```
+
+
+
 Run ingestion only:
 
 ```bash

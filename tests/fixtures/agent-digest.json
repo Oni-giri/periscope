@@ -1,0 +1,69 @@
+{
+  "date": "2026-08-26",
+  "tweets": [
+    {
+      "id": "1959000000000000001",
+      "author": "karpathy",
+      "created_at": "2026-08-26T08:12:00+00:00",
+      "text": "A small eval on long-context retrieval: once you leave the needle-in-haystack setup, most models drop more than the leaderboards suggest.",
+      "urls": [
+        "https://x.com/karpathy/status/1959000000000000001"
+      ],
+      "media": [
+        "https://example.test/eval.png",
+        "https://example.test/eval-chart.webp"
+      ],
+      "kind": "tweet"
+    },
+    {
+      "id": "1959000000000000002",
+      "author": "bank_of_latvia",
+      "created_at": "2026-08-26T10:40:00+00:00",
+      "text": "Latvia's overnight deposits ticked up again. The series is noisy week to week, but the 12-week slope is still the useful number.",
+      "urls": [],
+      "kind": "tweet"
+    },
+    {
+      "id": "1959000000000000003",
+      "author": "defi_data",
+      "created_at": "2026-08-26T14:05:00+00:00",
+      "text": "Funding flipped negative on the usual suspects. Not a crash signal by itself; more like the market paying people to be long again.",
+      "urls": [],
+      "kind": "tweet"
+    }
+  ],
+  "clusters": [
+    {
+      "headline": "Markets are paying for longs again",
+      "synthesis": "Funding went negative while Latvian deposits kept drifting up. Two different clocks, same mood: people parking cash and still wanting upside.",
+      "tag": "CRYPTO",
+      "tweet_ids": [
+        "1959000000000000002",
+        "1959000000000000003"
+      ]
+    }
+  ],
+  "picks": [
+    {
+      "tweet_id": "1959000000000000001",
+      "tag": "AI",
+      "reason": "Useful eval, not a model launch.",
+      "commentary": "This is the kind of AI post worth keeping: a concrete failure mode, not a demo. If a tool only looks good on needle-in-haystack, it is not ready for the way you actually search.",
+      "actions": [
+        {
+          "type": "read",
+          "label": "Read the long-context eval notes",
+          "url": "https://example.test/eval-notes"
+        },
+        {
+          "type": "steal",
+          "label": "Steal: test beyond needle-in-haystack",
+          "detail": "Reuse as an eval gate for retrieval tools"
+        }
+      ],
+      "nugget": true,
+      "actionable": true,
+      "nugget_why": "Concrete failure mode you can reuse as an eval gate."
+    }
+  ]
+}

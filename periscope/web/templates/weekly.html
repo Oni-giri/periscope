@@ -84,6 +84,23 @@
     {% endif %}
   </section>
 
+  {% if stale_ideas %}
+  <section class="weekly-section">
+    <h2 class="section-label">Stale parked ideas</h2>
+    <p class="muted-copy">You parked these and never opened them (7+ days).</p>
+    <div class="calibration-list">
+      {% for idea in stale_ideas %}
+        <article>
+          <strong>{{ idea.title }}</strong>
+          {% if idea.handle %}<span class="muted-copy">@{{ idea.handle }}</span>{% endif %}
+          <p>{{ idea.note or idea.action_type or 'Parked idea' }}</p>
+        </article>
+      {% endfor %}
+    </div>
+    <p><a class="accent-link" href="{{ url_for('ideas') }}?status=stale">Open Ideas inbox</a></p>
+  </section>
+  {% endif %}
+
   <section class="weekly-section">
     <h2 class="section-label">Suggested list changes</h2>
     <div class="suggestion-row"><strong>Add</strong><span>{% for handle in report.rendered.suggestions.add %}@{{ handle }}{% if not loop.last %}, {% endif %}{% else %}No additions suggested{% endfor %}</span></div>

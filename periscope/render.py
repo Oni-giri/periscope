@@ -15,8 +15,20 @@ def _stable_id(prefix: str, digest_date: date, values: Sequence[str]) -> str:
     return f"{prefix}_{hashlib.sha256(source.encode()).hexdigest()[:16]}"
 
 
+def _media_urls(tweet: Mapping[str, Any]) -> list[str]:
+    media = tweet.get("media")
+    if isinstance(media, list) and media:
+        return [str(item) for item in media if item]
+    urls = tweet.get("urls") or []
+    return [
+        str(url)
+        for url in urls
+        if str(url).lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".gif"))
+    ]
+
+
 def _tweet_view(tweet: Mapping[str, Any]) -> dict[str, Any]:
-    return {
+    view = {
         "id": str(tweet["id"]),
         "author": str(tweet["author"]),
         "created_at": str(tweet["created_at"]),
@@ -26,6 +38,10 @@ def _tweet_view(tweet: Mapping[str, Any]) -> dict[str, Any]:
         "urls": list(tweet.get("urls", [])),
         "kind": str(tweet.get("kind", "tweet")),
     }
+    media = _media_urls(tweet)
+    if media:
+        view["media"] = media
+    return view
 
 
 def assemble_digest(

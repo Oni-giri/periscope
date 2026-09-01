@@ -19,6 +19,7 @@ def _response(request: Request, report: dict | None) -> HTMLResponse:
             **base_context(request, page="weekly", title="Weekly"),
             "report": report,
             "weeks": database.list_weekly_weeks(),
+            "stale_ideas": database.list_ideas(status="parked", stale_days=7),
         },
     )
 

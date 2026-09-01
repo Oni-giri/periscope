@@ -33,5 +33,26 @@
     error.hidden = false;
   });
 
+  document.addEventListener("click", function (event) {
+    var copyButton = event.target.closest("[data-copy]");
+    if (!copyButton) return;
+    var value = copyButton.getAttribute("data-copy") || "";
+    if (!value) return;
+    var done = function () {
+      var previous = copyButton.textContent;
+      copyButton.textContent = "Copied";
+      window.setTimeout(function () {
+        copyButton.textContent = previous;
+      }, 1200);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(value).then(done).catch(function () {
+        window.prompt("Copy", value);
+      });
+    } else {
+      window.prompt("Copy", value);
+    }
+  });
+
   updateLabels();
 })();

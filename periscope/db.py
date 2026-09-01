@@ -295,7 +295,26 @@ ON weekly_reports(start_date, end_date);
 """
 
 
-MIGRATIONS: tuple[str, ...] = (MIGRATION_1, MIGRATION_2)
+MIGRATION_3 = """
+CREATE TABLE IF NOT EXISTS ideas (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at TEXT NOT NULL,
+    tweet_id TEXT,
+    handle TEXT,
+    title TEXT NOT NULL,
+    note TEXT,
+    action_type TEXT,
+    url TEXT,
+    source_digest_date TEXT,
+    status TEXT NOT NULL DEFAULT 'parked'
+        CHECK (status IN ('parked', 'done', 'dropped'))
+);
+CREATE INDEX IF NOT EXISTS ideas_status_created_idx ON ideas(status, created_at);
+CREATE INDEX IF NOT EXISTS ideas_tweet_id_idx ON ideas(tweet_id);
+"""
+
+
+MIGRATIONS: tuple[str, ...] = (MIGRATION_1, MIGRATION_2, MIGRATION_3)
 
 
 class Database:
@@ -740,6 +759,102 @@ class Database:
                 "SELECT 1 FROM keeps WHERE tweet_id = ?", (str(tweet_id),)
             ).fetchone()
         return row is not None
+
+    def park_idea(
+        self,
+        *,
+        title: str,
+        tweet_id: str | None = None,
+        handle: str | None = None,
+        note: str | None = None,
+        action_type: str | None = None,
+        url: str | None = None,
+        source_digest_date: str | None = None,
+        created_at: datetime | None = None,
+    ) -> dict[str, Any]:
+        title = str(title or "").strip()
+        if not title:
+            raise ValueError("Idea title is required")
+        stamped = isoformat(created_at)
+        with self.connect() as connection:
+            cursor = connection.execute(
+                """
+                INSERT INTO ideas(
+                    created_at, tweet_id, handle, title, note,
+                    action_type, url, source_digest_date, status
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'parked')
+                """,
+                (
+                    stamped,
+                    str(tweet_id) if tweet_id else None,
+                    (handle or "").removeprefix("@").lower() or None,
+                    title[:240],
+                    (note or "").strip()[:500] or None,
+                    (action_type or "").strip().lower() or None,
+                    (url or "").strip() or None,
+                    source_digest_date,
+                ),
+            )
+            idea_id = int(cursor.lastrowid)
+            connection.commit()
+            row = connection.execute("SELECT * FROM ideas WHERE id = ?", (idea_id,)).fetchone()
+        return dict(row)
+
+    def list_ideas(
+        self,
+        *,
+        status: str | None = "parked",
+        stale_days: int | None = None,
+        now: datetime | None = None,
+    ) -> list[dict[str, Any]]:
+        conditions: list[str] = []
+        parameters: list[Any] = []
+        if status:
+            conditions.append("status = ?")
+            parameters.append(status)
+        if stale_days is not None:
+            cutoff = (now or utc_now()).astimezone(UTC) - timedelta(days=stale_days)
+            conditions.append("created_at <= ?")
+            parameters.append(isoformat(cutoff))
+            if status is None:
+                conditions.append("status = 'parked'")
+            elif status != "parked":
+                # stale only meaningful for parked ideas
+                conditions.append("status = 'parked'")
+        where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        with self.connect() as connection:
+            rows = connection.execute(
+                f"SELECT * FROM ideas {where} ORDER BY created_at DESC, id DESC",
+                tuple(parameters),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def get_idea(self, idea_id: int) -> dict[str, Any] | None:
+        with self.connect() as connection:
+            row = connection.execute("SELECT * FROM ideas WHERE id = ?", (int(idea_id),)).fetchone()
+        return dict(row) if row else None
+
+    def set_idea_status(self, idea_id: int, status: str) -> dict[str, Any] | None:
+        if status not in {"parked", "done", "dropped"}:
+            raise ValueError(f"Invalid idea status: {status}")
+        with self.connect() as connection:
+            connection.execute(
+                "UPDATE ideas SET status = ? WHERE id = ?",
+                (status, int(idea_id)),
+            )
+            connection.commit()
+            row = connection.execute("SELECT * FROM ideas WHERE id = ?", (int(idea_id),)).fetchone()
+        return dict(row) if row else None
+
+    def update_idea_note(self, idea_id: int, note: str) -> dict[str, Any] | None:
+        with self.connect() as connection:
+            connection.execute(
+                "UPDATE ideas SET note = ? WHERE id = ?",
+                ((note or "").strip()[:500] or None, int(idea_id)),
+            )
+            connection.commit()
+            row = connection.execute("SELECT * FROM ideas WHERE id = ?", (int(idea_id),)).fetchone()
+        return dict(row) if row else None
 
     def feed_batches(
         self,

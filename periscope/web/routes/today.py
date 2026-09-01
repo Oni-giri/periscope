@@ -12,12 +12,29 @@ from periscope.web.context import base_context, database_for
 router = APIRouter()
 
 
+def _nugget_picks(rendered: dict) -> list[dict]:
+    nuggets: list[dict] = []
+    for pick in rendered.get("picks") or []:
+        actions = pick.get("actions") or []
+        steal_heavy = sum(1 for action in actions if action.get("type") == "steal") > 0
+        if (
+            pick.get("nugget")
+            or pick.get("actionable")
+            or str(pick.get("tag") or "").upper() == "INSIGHT"
+            or steal_heavy
+        ):
+            nuggets.append(pick)
+    return nuggets
+
+
 def _digest_response(request: Request, digest_date: str | None = None) -> HTMLResponse:
     database = database_for(request)
     digest = database.get_digest(digest_date) if digest_date else database.latest_digest()
     context = base_context(request, page="today", title="Today")
-    context["digest"] = digest["rendered"] if digest else None
+    rendered = digest["rendered"] if digest else None
+    context["digest"] = rendered
     context["digest_record"] = digest
+    context["nuggets"] = _nugget_picks(rendered) if rendered else []
     dates = database.list_digest_dates()
     context["digest_dates"] = dates
     context["previous_date"] = None

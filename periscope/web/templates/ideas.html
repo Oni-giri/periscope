@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block content %}
+<header class="page-header">
+  <div class="eyebrow">Local only</div>
+  <div class="header-row">
+    <div>
+      <h1>Ideas</h1>
+      <p class="lede">Parked actions from Today. Never syncs to X.</p>
+    </div>
+  </div>
+  {% if flash %}
+    <p class="flash-note" role="status">{{ flash }}</p>
+  {% endif %}
+  <nav class="topic-filters" aria-label="Filter ideas">
+    <a class="topic-chip{% if filter_status == 'parked' %} is-active{% endif %}" href="{{ url_for('ideas') }}?status=parked">Parked</a>
+    <a class="topic-chip{% if filter_status == 'stale' %} is-active{% endif %}" href="{{ url_for('ideas') }}?status=stale">Stale{% if stale_count %} · {{ stale_count }}{% endif %}</a>
+    <a class="topic-chip{% if filter_status == 'done' %} is-active{% endif %}" href="{{ url_for('ideas') }}?status=done">Done</a>
+    <a class="topic-chip{% if filter_status == 'dropped' %} is-active{% endif %}" href="{{ url_for('ideas') }}?status=dropped">Dropped</a>
+    <a class="topic-chip{% if filter_status == 'all' %} is-active{% endif %}" href="{{ url_for('ideas') }}?status=all">All</a>
+  </nav>
+</header>
+
+<section aria-label="Idea inbox">
+  {% for idea in ideas %}
+    <article class="idea-row">
+      <div class="idea-body">
+        <div class="idea-header">
+          {% if idea.action_type %}
+            <span class="action-badge action-{{ idea.action_type }}">{{ idea.action_type }}</span>
+          {% endif %}
+          <strong>{{ idea.title }}</strong>
+          {% if idea.handle %}
+            <span class="muted-copy">@{{ idea.handle }}</span>
+          {% endif %}
+          <time datetime="{{ idea.created_at }}">{{ idea.created_at|absolute_datetime }}</time>
+        </div>
+        {% if idea.url %}
+          <p><a class="accent-link" href="{{ idea.url }}" rel="noopener noreferrer">Open link</a></p>
+        {% endif %}
+        <form class="idea-note-form" method="post" action="{{ url_for('idea_note', idea_id=idea.id) }}?status={{ filter_status }}">
+          <label class="sr-only" for="note-{{ idea.id }}">Note</label>
+          <input id="note-{{ idea.id }}" type="text" name="note" value="{{ idea.note or '' }}" placeholder="One-line note">
+          <button type="submit" class="text-button">Save note</button>
+        </form>
+        <div class="idea-actions">
+          {% if idea.status == 'parked' %}
+            <form method="post" action="{{ url_for('idea_done', idea_id=idea.id) }}?status={{ filter_status }}">
+              <button type="submit" class="button">Done</button>
+            </form>
+            <form method="post" action="{{ url_for('idea_drop', idea_id=idea.id) }}?status={{ filter_status }}">
+              <button type="submit" class="text-button">Drop</button>
+            </form>
+          {% else %}
+            <span class="muted-copy">{{ idea.status }}</span>
+          {% endif %}
+        </div>
+      </div>
+    </article>
+  {% else %}
+    <section class="empty-state">
+      <span class="empty-kicker">Inbox empty</span>
+      <h2>Park a try / read / steal action from Today.</h2>
+      <a class="button" href="{{ url_for('today') }}">Open Today</a>
+    </section>
+  {% endfor %}
+</section>
+{% endblock %}

@@ -1,0 +1,63 @@
+{
+  "date": "2026-09-01",
+  "tweets": [
+    {
+      "id": "2001",
+      "author": "builder",
+      "created_at": "2026-09-01T09:00:00+00:00",
+      "text": "New CLI for local RAG evals: https://github.com/example/rag-cli \u2014 also watch the oracle class on this protocol.",
+      "urls": [
+        "https://github.com/example/rag-cli",
+        "https://x.com/builder/status/2001"
+      ],
+      "media": [],
+      "kind": "tweet"
+    },
+    {
+      "id": "2002",
+      "author": "thinker",
+      "created_at": "2026-09-01T10:00:00+00:00",
+      "text": "A reusable pattern: prefer writable interfaces over clever caches.",
+      "urls": [
+        "https://x.com/thinker/status/2002"
+      ],
+      "kind": "tweet"
+    }
+  ],
+  "clusters": [],
+  "picks": [
+    {
+      "tweet_id": "2001",
+      "tag": "TOOLS",
+      "reason": "Handy CLI with a concrete try path.",
+      "commentary": "Try the CLI; the oracle mention is a watch cue for protocol risk.",
+      "actions": [
+        {
+          "type": "try",
+          "label": "Try example/rag-cli",
+          "url": "https://github.com/example/rag-cli"
+        },
+        {
+          "type": "watch",
+          "label": "Watch oracle class"
+        }
+      ],
+      "actionable": true
+    },
+    {
+      "tweet_id": "2002",
+      "tag": "INSIGHT",
+      "reason": "Reusable interface pattern.",
+      "commentary": "Steal this as a design heuristic for local tools.",
+      "nugget": true,
+      "actionable": true,
+      "nugget_why": "Prefer writable interfaces when designing local tooling.",
+      "actions": [
+        {
+          "type": "steal",
+          "label": "Steal: writable interfaces over clever caches"
+        }
+      ]
+    }
+  ]
+}
