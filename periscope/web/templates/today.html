@@ -75,7 +75,11 @@
             <div class="story-meta">
               <div class="avatar-stack" aria-label="{{ cluster.tweets|length }} sources">
                 {% for tweet in cluster.tweets[:4] %}
-                  <span>{{ tweet.author[:2]|upper }}</span>
+                  {% if tweet.avatar %}
+                    <img class="avatar" src="{{ tweet.avatar }}" alt="" width="24" height="24">
+                  {% else %}
+                    <span class="avatar">{{ tweet.author[:2]|upper }}</span>
+                  {% endif %}
                 {% endfor %}
               </div>
               <span>{{ cluster.tweets|length }} posts</span>
@@ -101,7 +105,11 @@
           <div class="pick-mark" aria-label="Pick">★</div>
           <div class="pick-body">
             <div class="pick-header">
+              {% if pick.tweet.avatar %}
+              <img class="avatar" src="{{ pick.tweet.avatar }}" alt="" width="24" height="24">
+              {% else %}
               <span class="avatar">{{ pick.tweet.author[:2]|upper }}</span>
+              {% endif %}
               <strong><a class="author-link" href="{{ tweet_url.value }}">@{{ pick.tweet.author }}</a></strong>
               <time datetime="{{ pick.tweet.created_at }}">{{ pick.tweet.created_at|absolute_time }}</time>
               <a class="open-on-x" href="{{ tweet_url.value }}" rel="noopener noreferrer">Open on X</a>

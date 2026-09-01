@@ -511,6 +511,11 @@ class Database:
         result = dict(row)
         result["raw"] = json.loads(result.pop("raw_json"))
         result["urls"] = json.loads(result.pop("urls_json"))
+        raw = result["raw"]
+        if isinstance(raw, dict):
+            avatar = raw.get("avatar") or raw.get("author_avatar")
+            if avatar:
+                result["avatar"] = str(avatar)
         return result
 
     def replace_digest(

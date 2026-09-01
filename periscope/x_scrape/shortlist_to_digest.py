@@ -34,17 +34,19 @@ def convert(keepers: list[dict], digest_date: str) -> dict:
         tag = TAG.get(topic, "INSIGHT")
         handle = str(keeper.get("author_handle") or "unknown").removeprefix("@")
         media = list(keeper.get("image_urls") or [])
-        tweets.append(
-            {
-                "id": sid,
-                "author": handle,
-                "created_at": keeper.get("created_at") or f"{digest_date}T18:00:00+00:00",
-                "text": keeper.get("text") or "",
-                "urls": [keeper["tweet_url"]] if keeper.get("tweet_url") else [],
-                "media": media,
-                "kind": "tweet",
-            }
-        )
+        tweet = {
+            "id": sid,
+            "author": handle,
+            "created_at": keeper.get("created_at") or f"{digest_date}T18:00:00+00:00",
+            "text": keeper.get("text") or "",
+            "urls": [keeper["tweet_url"]] if keeper.get("tweet_url") else [],
+            "media": media,
+            "kind": "tweet",
+        }
+        avatar = keeper.get("author_avatar") or keeper.get("avatar")
+        if avatar:
+            tweet["avatar"] = str(avatar)
+        tweets.append(tweet)
         why = curation.get("why") or "curated"
         pick = {
             "tweet_id": sid,

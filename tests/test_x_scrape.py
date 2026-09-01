@@ -37,6 +37,7 @@ def test_shortlist_to_digest_maps_topics_and_skips_singletons() -> None:
             "text": "new model drop",
             "tweet_url": "https://x.com/alice/status/11",
             "image_urls": ["https://example.test/a.png"],
+            "author_avatar": "https://example.test/alice.jpg",
             "curation": {"topic": "ai", "why": "frontier model news", "score": 9},
         },
         {
@@ -60,6 +61,8 @@ def test_shortlist_to_digest_maps_topics_and_skips_singletons() -> None:
     assert [t["id"] for t in doc["tweets"]] == ["11", "12", "13"]
     assert doc["tweets"][0]["author"] == "alice"
     assert doc["tweets"][0]["media"] == ["https://example.test/a.png"]
+    assert doc["tweets"][0]["avatar"] == "https://example.test/alice.jpg"
+    assert "avatar" not in doc["tweets"][1]
     tags = {c["tag"] for c in doc["clusters"]}
     assert tags == {"AI"}
     assert doc["clusters"][0]["tweet_ids"] == ["11", "12"]

@@ -11,6 +11,7 @@ from urllib.request import Request, urlopen
 
 USER_AGENT = "Periscope/0.1 (+local media cache)"
 _ALLOWED_EXT = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
+_HANDLE_SAFE = re.compile(r"[^a-zA-Z0-9_.-]+")
 
 
 def _extension_for(url: str, content_type: str | None) -> str:
@@ -78,12 +79,58 @@ def cache_media_urls(
     return rewritten
 
 
+def _avatar_basename(tweet: dict) -> str:
+    handle = str(tweet.get("author") or "").removeprefix("@").strip()
+    handle = _HANDLE_SAFE.sub("_", handle).strip("._") or ""
+    if handle:
+        return f"avatar_{handle}"
+    tweet_id = str(tweet.get("id") or tweet.get("tweet_id") or "unknown")
+    return f"{tweet_id}_avatar"
+
+
+def cache_avatar_url(
+    tweet: dict,
+    url: str,
+    *,
+    media_dir: Path,
+    timeout: float = 20.0,
+) -> str:
+    """Cache a single author avatar; soft-fail keeps the remote URL."""
+
+    text = str(url or "").strip()
+    if not text:
+        return text
+    if text.startswith("/media/"):
+        return text
+    if not re.match(r"^https?://", text, re.IGNORECASE):
+        return text
+    media_dir.mkdir(parents=True, exist_ok=True)
+    base = _avatar_basename(tweet)
+    # Probe extension after download; start with .jpg placeholder path.
+    try:
+        request = Request(text, headers={"User-Agent": USER_AGENT})
+        with urlopen(request, timeout=timeout) as response:  # noqa: S310
+            body = response.read()
+            content_type = response.headers.get("Content-Type")
+        if not body:
+            return text
+        ext = _extension_for(text, content_type)
+        name = f"{base}{ext}"
+        (media_dir / name).write_bytes(body)
+        return local_media_url(name)
+    except (HTTPError, URLError, TimeoutError, OSError, ValueError):
+        return text
+
+
 def cache_digest_media(document: dict, *, media_dir: Path) -> dict:
-    """Rewrite ``tweets[].media`` (and nested pick/cluster media) in place."""
+    """Rewrite ``tweets[].media`` and ``tweets[].avatar`` in place."""
 
     for tweet in document.get("tweets") or []:
         tweet_id = str(tweet.get("id") or tweet.get("tweet_id") or "")
         media = list(tweet.get("media") or [])
         if tweet_id and media:
             tweet["media"] = cache_media_urls(tweet_id, media, media_dir=media_dir)
+        avatar = tweet.get("avatar")
+        if avatar:
+            tweet["avatar"] = cache_avatar_url(tweet, str(avatar), media_dir=media_dir)
     return document

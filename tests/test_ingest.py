@@ -34,6 +34,7 @@ def test_ingest_writes_commentary_and_media(app_config) -> None:
         "https://example.test/eval.png",
         "https://example.test/eval-chart.webp",
     ]
+    assert pick["tweet"]["avatar"] == "https://example.test/karpathy.jpg"
 
     app = create_app(app_config, Secrets(), database=database)
     with TestClient(app) as client:
@@ -62,6 +63,8 @@ def test_today_renders_open_on_x_and_media_gallery(app_config) -> None:
         assert "https://x.com/karpathy/status/1959000000000000001" in page.text
         assert page.text.count("https://example.test/eval.png") >= 1
         assert page.text.count("https://example.test/eval-chart.webp") >= 1
+        assert '<img class="avatar"' in page.text
+        assert "https://example.test/karpathy.jpg" in page.text
         assert 'class="topic-filters"' in page.text or "data-topic-filters" in page.text
         assert 'data-topic="AI"' in page.text
         # Distinct commentary vs reason: both may appear; duplicated equal text must not.

@@ -40,6 +40,9 @@ EXTRACT_JS = r"""
     const imgs = [...a.querySelectorAll('img')]
       .map(i => i.src)
       .filter(s => s && s.includes('pbs.twimg.com/media/'));
+    // Prefer the author's profile image (not tweet media).
+    const avatarImg = a.querySelector('img[src*="profile_images"]');
+    const author_avatar = avatarImg && avatarImg.src ? avatarImg.src : null;
     const blob = (a.innerText || '').toLowerCase();
     const is_ad = /\b(ad|promoted|promoted by)\b/.test(blob) || !!a.querySelector('[data-testid="placementTracking"]');
     const is_truncated = /\bshow more\b/i.test(a.innerText || '') || text.endsWith('…') || text.endsWith('...');
@@ -47,6 +50,7 @@ EXTRACT_JS = r"""
       status_id,
       author_name,
       author_handle: '@' + handle,
+      author_avatar,
       text,
       tweet_url: 'https://x.com/' + handle + '/status/' + status_id,
       created_at,

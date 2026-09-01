@@ -422,6 +422,7 @@ select:focus-visible {
 }
 
 .avatar-stack span,
+.avatar-stack img,
 .avatar {
   display: inline-flex;
   align-items: center;
@@ -429,13 +430,24 @@ select:focus-visible {
   width: 24px;
   height: 24px;
   border: 1px solid var(--rule-2);
+  border-radius: 50%;
   background: var(--inset);
   color: var(--fg);
   font-size: 9px;
   font-weight: 700;
 }
 
-.avatar-stack span + span {
+img.avatar,
+.avatar-stack img {
+  object-fit: cover;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.avatar-stack span + span,
+.avatar-stack img + span,
+.avatar-stack span + img,
+.avatar-stack img + img {
   margin-left: -6px;
 }
 

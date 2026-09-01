@@ -26,7 +26,9 @@ def hydrate_one(client: httpx.Client, status_id: str) -> dict | None:
         url = photo.get("url") or photo.get("original_url")
         if url:
             media.append(url)
-    return {"text": text, "image_urls": media}
+    author = tweet.get("author") or {}
+    avatar = author.get("avatar_url") or author.get("avatar") or None
+    return {"text": text, "image_urls": media, "author_avatar": avatar}
 
 
 def main() -> int:
@@ -57,6 +59,8 @@ def main() -> int:
                 keeper["image_urls"] = list(
                     dict.fromkeys([*(keeper.get("image_urls") or []), *got["image_urls"]])
                 )
+            if got.get("author_avatar") and not keeper.get("author_avatar"):
+                keeper["author_avatar"] = got["author_avatar"]
             keeper["is_truncated"] = False
             expanded += 1
             print(f"    {len(old)} -> {len(keeper['text'])} chars", flush=True)

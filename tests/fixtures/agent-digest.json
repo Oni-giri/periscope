@@ -13,7 +13,8 @@
         "https://example.test/eval.png",
         "https://example.test/eval-chart.webp"
       ],
-      "kind": "tweet"
+      "kind": "tweet",
+      "avatar": "https://example.test/karpathy.jpg"
     },
     {
       "id": "1959000000000000002",

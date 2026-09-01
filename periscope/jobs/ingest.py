@@ -41,6 +41,9 @@ def _as_tweet_payload(item: dict[str, Any]) -> dict[str, Any]:
         for url in media:
             if url not in payload["urls"]:
                 payload["urls"].append(url)
+    avatar = item.get("avatar") or item.get("author_avatar")
+    if avatar:
+        payload["avatar"] = str(avatar)
     if item.get("quoted_id"):
         payload["quoted_id"] = item["quoted_id"]
     if item.get("thread_root_id"):
@@ -134,6 +137,11 @@ def _attach_media_and_commentary(
     media_by_id = {
         str(tweet["id"]): list(tweet.get("media") or []) for tweet in tweets if tweet.get("media")
     }
+    avatar_by_id = {
+        str(tweet["id"]): str(tweet["avatar"])
+        for tweet in tweets
+        if tweet.get("avatar")
+    }
     extras_by_id = extras_by_id or {}
     for pick in digest["picks"]:
         tweet_id = str(pick["tweet_id"])
@@ -147,11 +155,17 @@ def _attach_media_and_commentary(
         ]
         if media:
             pick["tweet"]["media"] = media
+        avatar = avatar_by_id.get(tweet_id)
+        if avatar:
+            pick["tweet"]["avatar"] = avatar
     for cluster in digest["clusters"]:
         for tweet in cluster.get("tweets") or []:
             media = media_by_id.get(str(tweet["id"]))
             if media:
                 tweet["media"] = media
+            avatar = avatar_by_id.get(str(tweet["id"]))
+            if avatar:
+                tweet["avatar"] = avatar
     return digest
 
 
@@ -190,10 +204,16 @@ def run_ingest(
 
     stored = database.get_tweets([str(item["id"]) for item in tweets])
     media_by_id = {str(item["id"]): item.get("media") or [] for item in tweets}
+    avatar_by_id = {
+        str(item["id"]): str(item["avatar"]) for item in tweets if item.get("avatar")
+    }
     for row in stored:
         media = media_by_id.get(str(row["id"]))
         if media:
             row["media"] = media
+        avatar = avatar_by_id.get(str(row["id"]))
+        if avatar:
+            row["avatar"] = avatar
 
     cluster_drafts = _cluster_drafts(document)
     pick_drafts, commentary_by_id, extras_by_id = _pick_drafts(document)

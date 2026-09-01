@@ -41,6 +41,9 @@ def _tweet_view(tweet: Mapping[str, Any]) -> dict[str, Any]:
     media = _media_urls(tweet)
     if media:
         view["media"] = media
+    avatar = tweet.get("avatar")
+    if avatar:
+        view["avatar"] = str(avatar)
     return view
 
 

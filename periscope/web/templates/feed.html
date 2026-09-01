@@ -35,7 +35,11 @@
         <div class="feed-list">
           {% for tweet in batch.tweets %}
             <article class="feed-post">
+              {% if tweet.avatar %}
+              <img class="avatar" src="{{ tweet.avatar }}" alt="" width="24" height="24">
+              {% else %}
               <span class="avatar">{{ tweet.author[:2]|upper }}</span>
+              {% endif %}
               <div class="feed-copy">
                 <strong>@{{ tweet.author }}</strong>
                 <p>{{ tweet.text }}</p>

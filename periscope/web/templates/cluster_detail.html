@@ -15,7 +15,11 @@
     {% for tweet in cluster.tweets %}
       <article class="thread-post{% if tweet.thread_root_id != tweet.id %} is-reply{% endif %}">
         <header>
+          {% if tweet.avatar %}
+          <img class="avatar" src="{{ tweet.avatar }}" alt="" width="24" height="24">
+          {% else %}
           <span class="avatar">{{ tweet.author[:2]|upper }}</span>
+          {% endif %}
           <strong>@{{ tweet.author }}</strong>
           <time datetime="{{ tweet.created_at }}">{{ tweet.created_at|absolute_time }}</time>
           <span class="post-kind">{{ tweet.kind }}</span>
