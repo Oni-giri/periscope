@@ -181,3 +181,10 @@ def test_agent_digest_fixture_still_ingests_with_actions(app_config) -> None:
     pick = database.get_digest("2026-08-26")["rendered"]["picks"][0]
     assert pick["nugget"] is True
     assert pick["actions"][0]["type"] == "read"
+
+def test_topic_filter_hidden_overrides_grid_display() -> None:
+    css = Path("periscope/web/static/periscope.css").read_text()
+    assert ".pick-row[hidden]" in css
+    assert ".story-row[hidden]" in css
+    assert "display: none" in css.split(".pick-row[hidden]")[1][:200]
+

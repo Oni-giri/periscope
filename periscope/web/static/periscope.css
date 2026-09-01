@@ -449,6 +449,12 @@ select:focus-visible {
   text-decoration: none;
 }
 
+.story-row[hidden],
+.pick-row[hidden],
+.nugget-card[hidden] {
+  display: none;
+}
+
 .pick-row {
   display: grid;
   grid-template-columns: 40px minmax(0, 1fr);

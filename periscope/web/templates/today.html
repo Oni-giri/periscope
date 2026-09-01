@@ -41,7 +41,7 @@
     <p class="muted-copy">Ideas and techniques for building — not just topic news.</p>
     <div class="nugget-list">
       {% for pick in nuggets %}
-        <a class="nugget-card" href="#pick-{{ pick.id }}">
+        <a class="nugget-card" href="#pick-{{ pick.id }}" data-topic="{{ pick.tag }}">
           <span class="nugget-kicker">{% if pick.nugget %}Nugget{% else %}Actionable{% endif %} · {{ pick.tag }}</span>
           <strong>@{{ pick.tweet.author }}</strong>
           <span>{{ pick.nugget_why or pick.commentary or pick.reason }}</span>
@@ -146,12 +146,13 @@
     if (!nav || !items) return;
     var chips = Array.prototype.slice.call(nav.querySelectorAll(".topic-chip"));
     var rows = Array.prototype.slice.call(items.querySelectorAll("[data-topic]"));
+    var nuggets = Array.prototype.slice.call(document.querySelectorAll(".nugget-card[data-topic]"));
 
     function apply(topic) {
       chips.forEach(function (chip) {
         chip.classList.toggle("is-active", (chip.getAttribute("data-topic") || "") === topic);
       });
-      rows.forEach(function (row) {
+      rows.concat(nuggets).forEach(function (row) {
         var rowTopic = row.getAttribute("data-topic") || "";
         var show = !topic || rowTopic === topic;
         row.hidden = !show;
