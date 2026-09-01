@@ -111,6 +111,8 @@ def test_today_renders_actions_and_nuggets(app_config) -> None:
         assert "action-strip" in page.text
         assert "Try example/rag-cli" in page.text
         assert "Park in inbox" in page.text
+        assert ">Follow</button>" in page.text
+        assert "Follow @security_alice" in page.text
         assert "Prefer writable interfaces" in page.text
 
 
@@ -197,13 +199,17 @@ def test_ingest_indexes_actions_and_archive_filters(app_config) -> None:
     assert database.is_kept("2001")
     assert database.is_kept("2002")
     types_2001 = {item["type"] for item in database.list_tweet_actions("2001")}
-    assert types_2001 == {"try", "watch"}
+    assert types_2001 == {"try", "watch", "follow"}
     steal = database.list_tweet_actions("2002")
     assert steal[0]["type"] == "steal"
 
     try_page = database.archive_page(action="try")
     assert [item["id"] for item in try_page["items"]] == ["2001"]
-    assert {action["type"] for action in try_page["items"][0]["actions"]} == {"try", "watch"}
+    assert {action["type"] for action in try_page["items"][0]["actions"]} == {
+        "try",
+        "watch",
+        "follow",
+    }
     steal_page = database.archive_page(action="steal")
     assert [item["id"] for item in steal_page["items"]] == ["2002"]
     any_page = database.archive_page(action="any")
@@ -228,7 +234,7 @@ def test_ingest_indexes_actions_and_archive_filters(app_config) -> None:
         assert "https://x.com/builder/status/2001" in page.text
         assert "New CLI for local RAG" in page.text
         assert "writable interfaces" not in page.text
-        empty = client.get("/archive?action=follow")
+        empty = client.get("/archive?action=read")
         assert empty.status_code == 200
         assert "action filter" in empty.text
 

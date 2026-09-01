@@ -26,9 +26,7 @@ def main() -> int:
     parser.add_argument(
         "--profile",
         type=Path,
-        default=Path(
-            os.environ.get("PERISCOPE_X_CHROME_PROFILE") or "data/chrome-profile"
-        ),
+        default=Path(os.environ.get("PERISCOPE_X_CHROME_PROFILE") or "data/chrome-profile"),
     )
     parser.add_argument(
         "--watermark",
@@ -93,6 +91,8 @@ def main() -> int:
             args.timelines,
             "--min-timeline",
             str(args.min_timeline),
+            "--db",
+            str(Path(args.data_dir) / "periscope.db"),
         ]
         if args.headless:
             scrape_cmd.append("--headless")

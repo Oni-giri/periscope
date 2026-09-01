@@ -25,6 +25,7 @@ from periscope.web.routes import (
     cluster_detail,
     discovery,
     feed,
+    follow_queue,
     health,
     ideas,
     settings,
@@ -107,6 +108,7 @@ def create_app(
     templates.env.filters["absolute_datetime"] = absolute_datetime
     templates.env.filters["absolute_time"] = absolute_time
     templates.env.filters["date_heading"] = date_heading
+    templates.env.filters["follow_handle"] = follow_queue.follow_handle_filter
     app.state.config = config
     app.state.secrets = secrets
     app.state.database = database
@@ -140,6 +142,7 @@ def create_app(
     app.include_router(cluster_detail.router)
     app.include_router(discovery.router)
     app.include_router(ideas.router)
+    app.include_router(follow_queue.router)
     app.include_router(weekly.router)
     app.include_router(settings.router)
     app.include_router(health.router)

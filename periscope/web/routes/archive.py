@@ -63,6 +63,8 @@ async def archive(
             "selected_kept": kept or "",
             "selected_action": action_value or "",
             "action_filters": ACTION_FILTERS,
+            "queued_handles": database.queued_follow_handles(),
+            "follow_source": "archive",
             "search_error": error,
         }
     )

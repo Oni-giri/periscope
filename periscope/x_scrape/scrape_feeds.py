@@ -63,6 +63,7 @@ EXTRACT_JS = r"""
 }
 """
 
+
 def signed_in(page) -> bool:
     url = page.url or ""
     if "login" in url or "/i/flow/login" in url:
@@ -73,10 +74,12 @@ def signed_in(page) -> bool:
     except PlaywrightTimeout:
         return False
 
+
 def click_tab(page, name: str) -> None:
     tab = page.get_by_role("tab", name=name)
     tab.click()
     page.wait_for_timeout(1500)
+
 
 def collect(
     page,
@@ -124,9 +127,11 @@ def collect(
         page.wait_for_timeout(400)
     return list(by_id.values())
 
+
 def write_json(path: Path, payload) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
+
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
@@ -146,6 +151,14 @@ def main() -> int:
         help="Comma-separated home tab names for Grok custom timelines",
     )
     p.add_argument("--min-timeline", type=int, default=100)
+    p.add_argument(
+        "--db",
+        type=Path,
+        default=Path("data/periscope.db"),
+        help="Periscope SQLite path for draining the follow queue",
+    )
+    p.add_argument("--follow-limit", type=int, default=15)
+    p.add_argument("--skip-follows", action="store_true")
     args = p.parse_args()
 
     args.profile.mkdir(parents=True, exist_ok=True)
@@ -250,8 +263,15 @@ def main() -> int:
                 print("wrote timeline", slug, meta["timelines"][slug], flush=True)
 
         write_json(args.out_dir / "scrape_meta.json", meta)
+
+        if not args.skip_follows:
+            from .follow_queued import drain_follow_queue
+
+            drain_follow_queue(page, args.db, limit=args.follow_limit)
+
         ctx.close()
     return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())

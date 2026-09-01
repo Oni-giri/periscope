@@ -16,6 +16,26 @@
             class="text-button"
             data-copy="{{ action.detail or action.label }}"
           >Copy</button>
+          {% if action.type == 'follow' %}
+            {% set target_handle = action|follow_handle(handle) %}
+            {% if target_handle and target_handle in queued_handles|default([]) %}
+              {% include "partials/follow_queued.html" %}
+            {% elif target_handle %}
+              <form
+                class="park-form follow-form"
+                hx-post="{{ url_for('queue_follow') }}"
+                hx-swap="outerHTML"
+                hx-target="this"
+              >
+                <input type="hidden" name="handle" value="{{ target_handle }}">
+                <input type="hidden" name="tweet_id" value="{{ tweet_id }}">
+                <input type="hidden" name="url" value="{{ action.url or '' }}">
+                <input type="hidden" name="label" value="{{ action.label }}">
+                <input type="hidden" name="source" value="{{ follow_source|default('today') }}">
+                <button type="submit" class="text-button">Follow</button>
+              </form>
+            {% endif %}
+          {% endif %}
           <form
             class="park-form"
             hx-post="{{ url_for('park_idea') }}"

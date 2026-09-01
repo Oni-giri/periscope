@@ -40,6 +40,11 @@
         {
           "type": "watch",
           "label": "Watch oracle class"
+        },
+        {
+          "type": "follow",
+          "label": "Follow @security_alice",
+          "url": "https://x.com/security_alice"
         }
       ],
       "actionable": true

@@ -352,7 +352,26 @@ def _normalize_tweet_action(raw: Any) -> dict[str, Any] | None:
     }
 
 
-MIGRATIONS: tuple[str, ...] = (MIGRATION_1, MIGRATION_2, MIGRATION_3, MIGRATION_4)
+MIGRATION_5 = """
+CREATE TABLE IF NOT EXISTS follow_queue (
+  handle TEXT PRIMARY KEY,
+  tweet_id TEXT,
+  added_at TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending','followed','already','failed')),
+  source TEXT,
+  last_error TEXT,
+  followed_at TEXT
+);
+CREATE INDEX IF NOT EXISTS follow_queue_status_idx ON follow_queue(status, added_at);
+"""
+
+
+FOLLOW_QUEUE_STATUSES: tuple[str, ...] = ("pending", "followed", "already", "failed")
+FOLLOW_MARK_STATUSES: tuple[str, ...] = ("followed", "already", "failed")
+
+
+MIGRATIONS: tuple[str, ...] = (MIGRATION_1, MIGRATION_2, MIGRATION_3, MIGRATION_4, MIGRATION_5)
 
 
 class Database:
@@ -983,6 +1002,106 @@ class Database:
             connection.commit()
             row = connection.execute("SELECT * FROM ideas WHERE id = ?", (int(idea_id),)).fetchone()
         return dict(row) if row else None
+
+    def enqueue_follow(
+        self,
+        handle: str,
+        tweet_id: str | None = None,
+        source: str = "today",
+    ) -> dict[str, Any]:
+        canonical = str(handle or "").strip().removeprefix("@").lower()
+        if not canonical:
+            raise ValueError("Follow handle cannot be empty")
+        tweet_id_value = str(tweet_id).strip() if tweet_id else None
+        source_value = str(source or "today").strip() or "today"
+        now = isoformat()
+        with self.connect() as connection:
+            existing = connection.execute(
+                "SELECT * FROM follow_queue WHERE handle = ?",
+                (canonical,),
+            ).fetchone()
+            if existing is None:
+                connection.execute(
+                    """
+                    INSERT INTO follow_queue(
+                        handle, tweet_id, added_at, status, source
+                    ) VALUES (?, ?, ?, 'pending', ?)
+                    """,
+                    (canonical, tweet_id_value, now, source_value),
+                )
+            elif existing["status"] == "failed":
+                connection.execute(
+                    """
+                    UPDATE follow_queue
+                    SET tweet_id = COALESCE(?, tweet_id),
+                        added_at = ?,
+                        status = 'pending',
+                        source = COALESCE(?, source),
+                        last_error = NULL,
+                        followed_at = NULL
+                    WHERE handle = ?
+                    """,
+                    (tweet_id_value, now, source_value, canonical),
+                )
+            connection.commit()
+            row = connection.execute(
+                "SELECT * FROM follow_queue WHERE handle = ?",
+                (canonical,),
+            ).fetchone()
+        assert row is not None
+        return dict(row)
+
+    def list_pending_follows(self) -> list[dict[str, Any]]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM follow_queue WHERE status = 'pending' ORDER BY added_at, handle"
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def mark_follow(
+        self,
+        handle: str,
+        status: str,
+        error: str | None = None,
+    ) -> dict[str, Any] | None:
+        if status not in FOLLOW_MARK_STATUSES:
+            raise ValueError(f"Invalid follow status: {status}")
+        canonical = str(handle or "").strip().removeprefix("@").lower()
+        if not canonical:
+            raise ValueError("Follow handle cannot be empty")
+        now = isoformat()
+        followed_at = now if status in {"followed", "already"} else None
+        last_error = None
+        if status == "failed" and error:
+            last_error = str(error).strip()[:500] or None
+        with self.connect() as connection:
+            existing = connection.execute(
+                "SELECT 1 FROM follow_queue WHERE handle = ?",
+                (canonical,),
+            ).fetchone()
+            if existing is None:
+                return None
+            connection.execute(
+                """
+                UPDATE follow_queue
+                SET status = ?, last_error = ?, followed_at = ?
+                WHERE handle = ?
+                """,
+                (status, last_error, followed_at, canonical),
+            )
+            connection.commit()
+            row = connection.execute(
+                "SELECT * FROM follow_queue WHERE handle = ?",
+                (canonical,),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def queued_follow_handles(self) -> set[str]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT handle FROM follow_queue WHERE status IN ('pending', 'followed', 'already')"
+            ).fetchall()
+        return {str(row["handle"]) for row in rows}
 
     def feed_batches(
         self,

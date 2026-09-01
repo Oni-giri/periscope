@@ -153,10 +153,11 @@ curator does not tweet, like, follow, or reply. Today serves cached images from
 ## Actions, nuggets, and idea inbox
 
 Today is not only news. Each pick can carry 1–3 typed actions (`try`, `read`,
-`watch`, `steal`, `follow`) with open / copy / **Park in inbox** controls. A
-**Nuggets** lane surfaces picks marked `nugget` or `actionable` (ideas and
-techniques, not just breaking topic posts). Archive filters by action type;
-ingest auto-keeps action picks locally.
+`watch`, `steal`, `follow`) with open / copy / **Park in inbox** controls.
+**Follow** on Today queues; next scrape follows. A **Nuggets** lane surfaces
+picks marked `nugget` or `actionable` (ideas and techniques, not just breaking
+topic posts). Archive filters by action type; ingest auto-keeps action picks
+locally.
 
 The local **Ideas** inbox (SQLite `ideas` table) stores parked actions. Park,
 mark done, drop, or edit a note — nothing syncs to X. Weekly also lists parked

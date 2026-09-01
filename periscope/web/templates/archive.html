@@ -79,11 +79,11 @@
             </div>
             <p>{{ tweet.text }}</p>
             {% if tweet.actions %}
-              <div class="result-actions">
-                {% for action_type in tweet.actions|map(attribute='type')|unique %}
-                  <span class="action-badge action-{{ action_type }}">{{ action_type }}</span>
-                {% endfor %}
-              </div>
+              {% set actions = tweet.actions %}
+              {% set tweet_id = tweet.id %}
+              {% set handle = tweet.author %}
+              {% set digest_date = '' %}
+              {% include "partials/action_strip.html" %}
             {% endif %}
           </div>
         </article>
