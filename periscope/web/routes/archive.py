@@ -5,8 +5,10 @@ from __future__ import annotations
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import HTMLResponse
 
-from periscope.db import SearchQueryError
+from periscope.db import TWEET_ACTION_TYPES, SearchQueryError
 from periscope.web.context import base_context, database_for
+
+ACTION_FILTERS = ("any",) + TWEET_ACTION_TYPES
 
 router = APIRouter()
 
@@ -20,6 +22,7 @@ async def archive(
     account: str | None = None,
     topic: str | None = None,
     kept: str | None = None,
+    action: str | None = None,
     page: int = Query(1, ge=1),
 ) -> HTMLResponse:
     database = database_for(request)
@@ -28,6 +31,9 @@ async def archive(
         kept_value = True
     elif kept in {"0", "false", "no"}:
         kept_value = False
+    action_value = (action or "").strip().lower() or None
+    if action_value and action_value not in ACTION_FILTERS:
+        action_value = None
     error = None
     try:
         results = database.archive_page(
@@ -37,6 +43,7 @@ async def archive(
             account=account,
             topic=topic,
             kept=kept_value,
+            action=action_value,
             page=page,
         )
     except SearchQueryError:
@@ -54,6 +61,8 @@ async def archive(
             "selected_account": account or "",
             "selected_topic": topic or "",
             "selected_kept": kept or "",
+            "selected_action": action_value or "",
+            "action_filters": ACTION_FILTERS,
             "search_error": error,
         }
     )

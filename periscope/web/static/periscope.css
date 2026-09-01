@@ -959,6 +959,33 @@ input::placeholder {
   font-size: 12px;
 }
 
+.result-author {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.archive-action-filters {
+  margin-top: 18px;
+}
+
+.archive-result .open-on-x {
+  font-size: 11px;
+}
+
+.archive-result .avatar {
+  width: 20px;
+  height: 20px;
+}
+
 .result-author time::before {
   margin: 0 6px;
   content: "/";

@@ -22,6 +22,7 @@ class IngestResult:
     pick_count: int
     digest_written: bool
     note: str | None = None
+    actions_kept: int = 0
 
 
 def _as_tweet_payload(item: dict[str, Any]) -> dict[str, Any]:
@@ -138,9 +139,7 @@ def _attach_media_and_commentary(
         str(tweet["id"]): list(tweet.get("media") or []) for tweet in tweets if tweet.get("media")
     }
     avatar_by_id = {
-        str(tweet["id"]): str(tweet["avatar"])
-        for tweet in tweets
-        if tweet.get("avatar")
+        str(tweet["id"]): str(tweet["avatar"]) for tweet in tweets if tweet.get("avatar")
     }
     extras_by_id = extras_by_id or {}
     for pick in digest["picks"]:
@@ -204,9 +203,7 @@ def run_ingest(
 
     stored = database.get_tweets([str(item["id"]) for item in tweets])
     media_by_id = {str(item["id"]): item.get("media") or [] for item in tweets}
-    avatar_by_id = {
-        str(item["id"]): str(item["avatar"]) for item in tweets if item.get("avatar")
-    }
+    avatar_by_id = {str(item["id"]): str(item["avatar"]) for item in tweets if item.get("avatar")}
     for row in stored:
         media = media_by_id.get(str(row["id"]))
         if media:
@@ -244,12 +241,26 @@ def run_ingest(
         stats=digest["stats"],
         rendered=digest,
     )
+    actions_kept = 0
+    for pick in digest["picks"]:
+        actions = pick.get("actions") or []
+        if not actions:
+            continue
+        tweet_id = str(pick["tweet_id"])
+        database.replace_tweet_actions(
+            tweet_id,
+            actions,
+            digest_date=target_date.isoformat(),
+        )
+        database.keep_tweet(tweet_id, now=assembled_at)
+        actions_kept += 1
     return IngestResult(
         date=target_date.isoformat(),
         tweet_count=len(stored),
         cluster_count=len(digest["clusters"]),
         pick_count=len(digest["picks"]),
         digest_written=True,
+        actions_kept=actions_kept,
     )
 
 

@@ -314,7 +314,45 @@ CREATE INDEX IF NOT EXISTS ideas_tweet_id_idx ON ideas(tweet_id);
 """
 
 
-MIGRATIONS: tuple[str, ...] = (MIGRATION_1, MIGRATION_2, MIGRATION_3)
+MIGRATION_4 = """
+CREATE TABLE IF NOT EXISTS tweet_actions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  tweet_id TEXT NOT NULL REFERENCES tweets(id) ON DELETE CASCADE,
+  action_type TEXT NOT NULL CHECK (action_type IN ('try','read','watch','steal','follow')),
+  label TEXT NOT NULL,
+  url TEXT,
+  detail TEXT,
+  source_digest_date TEXT,
+  UNIQUE(tweet_id, action_type, label)
+);
+CREATE INDEX IF NOT EXISTS tweet_actions_type_idx ON tweet_actions(action_type);
+CREATE INDEX IF NOT EXISTS tweet_actions_tweet_idx ON tweet_actions(tweet_id);
+"""
+
+
+TWEET_ACTION_TYPES: tuple[str, ...] = ("try", "read", "watch", "steal", "follow")
+
+
+def _normalize_tweet_action(raw: Any) -> dict[str, Any] | None:
+    if not isinstance(raw, Mapping):
+        return None
+    action_type = str(raw.get("type") or raw.get("action_type") or "").strip().lower()
+    if action_type not in TWEET_ACTION_TYPES:
+        return None
+    label = str(raw.get("label") or "").strip()
+    if not label:
+        return None
+    url = str(raw.get("url") or "").strip() or None
+    detail = str(raw.get("detail") or "").strip() or None
+    return {
+        "type": action_type,
+        "label": label[:240],
+        "url": url[:2000] if url else None,
+        "detail": detail[:500] if detail else None,
+    }
+
+
+MIGRATIONS: tuple[str, ...] = (MIGRATION_1, MIGRATION_2, MIGRATION_3, MIGRATION_4)
 
 
 class Database:
@@ -765,6 +803,91 @@ class Database:
             ).fetchone()
         return row is not None
 
+    def keep_tweet(self, tweet_id: str, *, now: datetime | None = None) -> bool:
+        """Keep a tweet if it is not already kept. Never un-keeps."""
+        with self.connect() as connection:
+            if (
+                connection.execute("SELECT 1 FROM tweets WHERE id = ?", (str(tweet_id),)).fetchone()
+                is None
+            ):
+                raise KeyError(tweet_id)
+            cursor = connection.execute(
+                "INSERT OR IGNORE INTO keeps(tweet_id, kept_at) VALUES (?, ?)",
+                (str(tweet_id), isoformat(now)),
+            )
+            connection.commit()
+            return cursor.rowcount > 0
+
+    def replace_tweet_actions(
+        self,
+        tweet_id: str,
+        actions: Sequence[Mapping[str, Any]],
+        digest_date: str | date | None = None,
+    ) -> int:
+        tweet_id = str(tweet_id)
+        source_date = (
+            digest_date.isoformat()
+            if isinstance(digest_date, date)
+            else (str(digest_date) if digest_date else None)
+        )
+        cleaned: list[dict[str, Any]] = []
+        seen: set[tuple[str, str]] = set()
+        for raw in actions:
+            item = _normalize_tweet_action(raw)
+            if item is None:
+                continue
+            key = (item["type"], item["label"].lower())
+            if key in seen:
+                continue
+            seen.add(key)
+            cleaned.append(item)
+        with self.connect() as connection:
+            connection.execute("DELETE FROM tweet_actions WHERE tweet_id = ?", (tweet_id,))
+            for item in cleaned:
+                connection.execute(
+                    """
+                    INSERT INTO tweet_actions(
+                        tweet_id, action_type, label, url, detail, source_digest_date
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        tweet_id,
+                        item["type"],
+                        item["label"],
+                        item["url"],
+                        item["detail"],
+                        source_date,
+                    ),
+                )
+            connection.commit()
+        return len(cleaned)
+
+    def list_tweet_actions(self, tweet_id: str) -> list[dict[str, Any]]:
+        return self._actions_for_tweets([str(tweet_id)]).get(str(tweet_id), [])
+
+    def _actions_for_tweets(self, tweet_ids: Sequence[str]) -> dict[str, list[dict[str, Any]]]:
+        ids = [str(item) for item in tweet_ids if str(item)]
+        by_id: dict[str, list[dict[str, Any]]] = {tweet_id: [] for tweet_id in ids}
+        if not ids:
+            return by_id
+        placeholders = ",".join("?" for _ in ids)
+        with self.connect() as connection:
+            rows = connection.execute(
+                f"SELECT tweet_id, action_type, label, url, detail FROM tweet_actions "
+                f"WHERE tweet_id IN ({placeholders}) ORDER BY id",  # noqa: S608
+                tuple(ids),
+            ).fetchall()
+        for row in rows:
+            by_id.setdefault(str(row["tweet_id"]), []).append(
+                {
+                    "type": row["action_type"],
+                    "label": row["label"],
+                    "url": row["url"],
+                    "detail": row["detail"],
+                }
+            )
+        return by_id
+
     def park_idea(
         self,
         *,
@@ -928,6 +1051,7 @@ class Database:
         account: str | None = None,
         topic: str | None = None,
         kept: bool | None = None,
+        action: str | None = None,
         page: int = 1,
         page_size: int = 20,
     ) -> dict[str, Any]:
@@ -964,6 +1088,19 @@ class Database:
             conditions.append(
                 f"{operator}EXISTS (SELECT 1 FROM keeps WHERE keeps.tweet_id = tweets.id)"
             )
+        action_filter = (action or "").strip().lower()
+        if action_filter == "any":
+            conditions.append(
+                "EXISTS (SELECT 1 FROM tweet_actions WHERE tweet_actions.tweet_id = tweets.id)"
+            )
+        elif action_filter in TWEET_ACTION_TYPES:
+            conditions.append(
+                "EXISTS ("
+                "SELECT 1 FROM tweet_actions "
+                "WHERE tweet_actions.tweet_id = tweets.id AND tweet_actions.action_type = ?"
+                ")"
+            )
+            parameters.append(action_filter)
 
         join_sql = " ".join(joins)
         where_sql = f"WHERE {' AND '.join(conditions)}" if conditions else ""
@@ -988,14 +1125,18 @@ class Database:
                 raise SearchQueryError(str(exc)) from exc
             raise
         assert total_row is not None
+        items = [self._tweet_row(row) for row in rows]
+        actions_by_id = self._actions_for_tweets([str(item["id"]) for item in items])
+        for item in items:
+            item["actions"] = actions_by_id.get(str(item["id"]), [])
         return {
-            "items": [self._tweet_row(row) for row in rows],
+            "items": items,
             "total": int(total_row["total"]),
             "page": page,
             "page_size": page_size,
         }
 
-    def archive_facets(self) -> dict[str, list[str]]:
+    def archive_facets(self) -> dict[str, Any]:
         with self.connect() as connection:
             accounts = connection.execute(
                 "SELECT author AS value FROM tweets "
@@ -1005,9 +1146,19 @@ class Database:
                 "SELECT name AS value FROM topics "
                 "UNION SELECT tag AS value FROM clusters ORDER BY value"
             ).fetchall()
+            action_rows = connection.execute(
+                "SELECT action_type AS value, COUNT(DISTINCT tweet_id) AS n "
+                "FROM tweet_actions GROUP BY action_type"
+            ).fetchall()
+            any_row = connection.execute(
+                "SELECT COUNT(DISTINCT tweet_id) AS n FROM tweet_actions"
+            ).fetchone()
+        action_counts = {str(row["value"]): int(row["n"]) for row in action_rows if row["value"]}
         return {
             "accounts": [str(row["value"]) for row in accounts if row["value"]],
             "topics": [str(row["value"]) for row in topics if row["value"]],
+            "actions": action_counts,
+            "action_any": int(any_row["n"]) if any_row is not None else 0,
         }
 
     def list_accounts(self, *, include_muted: bool = False) -> list[dict[str, Any]]:

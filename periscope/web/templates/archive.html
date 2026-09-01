@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
+  {% set archive_qs = 'q=' ~ q|urlencode ~ '&from=' ~ from_date ~ '&to=' ~ to_date ~ '&account=' ~ selected_account|urlencode ~ '&topic=' ~ selected_topic|urlencode ~ '&kept=' ~ selected_kept %}
   <header class="page-header">
     <h1>Archive</h1>
     <p class="lede">Search every stored post. Results are finite, absolute-dated, and ordered by relevance.</p>
@@ -39,9 +40,20 @@
           <option value="false"{% if selected_kept == "false" %} selected{% endif %}>Not kept</option>
         </select>
       </label>
+      <input type="hidden" name="action" value="{{ selected_action }}">
       <button class="button" type="submit">Search</button>
     </div>
   </form>
+
+  <nav class="topic-filters archive-action-filters" aria-label="Filter by action">
+    <a class="topic-chip{% if not selected_action %} is-active{% endif %}" href="{{ url_for('archive') }}?{{ archive_qs }}">All</a>
+    <a class="topic-chip{% if selected_action == 'any' %} is-active{% endif %}" href="{{ url_for('archive') }}?{{ archive_qs }}&action=any">Has action</a>
+    <a class="topic-chip{% if selected_action == 'try' %} is-active{% endif %}" href="{{ url_for('archive') }}?{{ archive_qs }}&action=try">Try</a>
+    <a class="topic-chip{% if selected_action == 'read' %} is-active{% endif %}" href="{{ url_for('archive') }}?{{ archive_qs }}&action=read">Read</a>
+    <a class="topic-chip{% if selected_action == 'watch' %} is-active{% endif %}" href="{{ url_for('archive') }}?{{ archive_qs }}&action=watch">Watch</a>
+    <a class="topic-chip{% if selected_action == 'steal' %} is-active{% endif %}" href="{{ url_for('archive') }}?{{ archive_qs }}&action=steal">Steal</a>
+    <a class="topic-chip{% if selected_action == 'follow' %} is-active{% endif %}" href="{{ url_for('archive') }}?{{ archive_qs }}&action=follow">Follow</a>
+  </nav>
 
   {% if search_error %}<p class="form-error" role="alert">{{ search_error }}</p>{% endif %}
 
@@ -53,11 +65,26 @@
   {% if results["items"] %}
     <section class="archive-results" aria-label="Search results">
       {% for tweet in results["items"] %}
+        {% set x_url = 'https://x.com/' ~ tweet.author ~ '/status/' ~ tweet.id %}
         <article class="archive-result">
           <div class="result-date">{{ tweet.created_at|absolute_date }}</div>
           <div>
-            <div class="result-author">@{{ tweet.author }} <time datetime="{{ tweet.created_at }}">{{ tweet.created_at|absolute_time }}</time></div>
+            <div class="result-author">
+              {% if tweet.avatar %}
+                <img class="avatar" src="{{ tweet.avatar }}" alt="" width="24" height="24">
+              {% endif %}
+              <span>@{{ tweet.author }}</span>
+              <time datetime="{{ tweet.created_at }}">{{ tweet.created_at|absolute_time }}</time>
+              <a class="open-on-x" href="{{ x_url }}" rel="noopener noreferrer">Open on X</a>
+            </div>
             <p>{{ tweet.text }}</p>
+            {% if tweet.actions %}
+              <div class="result-actions">
+                {% for action_type in tweet.actions|map(attribute='type')|unique %}
+                  <span class="action-badge action-{{ action_type }}">{{ action_type }}</span>
+                {% endfor %}
+              </div>
+            {% endif %}
           </div>
         </article>
       {% endfor %}
@@ -67,11 +94,11 @@
     {% if last_page > 1 %}
       <nav class="pagination" aria-label="Archive pages">
         {% if results.page > 1 %}
-          <a href="{{ url_for('archive') }}?q={{ q|urlencode }}&from={{ from_date }}&to={{ to_date }}&account={{ selected_account|urlencode }}&topic={{ selected_topic|urlencode }}&kept={{ selected_kept }}&page={{ results.page - 1 }}">← Previous</a>
+          <a href="{{ url_for('archive') }}?{{ archive_qs }}&action={{ selected_action }}&page={{ results.page - 1 }}">← Previous</a>
         {% endif %}
         <span>Page {{ results.page }} of {{ last_page }}</span>
         {% if results.page < last_page %}
-          <a href="{{ url_for('archive') }}?q={{ q|urlencode }}&from={{ from_date }}&to={{ to_date }}&account={{ selected_account|urlencode }}&topic={{ selected_topic|urlencode }}&kept={{ selected_kept }}&page={{ results.page + 1 }}">Next →</a>
+          <a href="{{ url_for('archive') }}?{{ archive_qs }}&action={{ selected_action }}&page={{ results.page + 1 }}">Next →</a>
         {% endif %}
       </nav>
     {% endif %}
@@ -79,7 +106,7 @@
     <section class="empty-state compact">
       <span class="empty-kicker">No matches</span>
       <h2>Try a broader search.</h2>
-      <p>Remove a date, account, topic, or keep filter to widen the finite result set.</p>
+      <p>Remove a date, account, topic, keep, or action filter to widen the finite result set.</p>
     </section>
   {% endif %}
 {% endblock %}

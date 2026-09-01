@@ -182,9 +182,59 @@ def test_agent_digest_fixture_still_ingests_with_actions(app_config) -> None:
     assert pick["nugget"] is True
     assert pick["actions"][0]["type"] == "read"
 
+
+def test_ingest_indexes_actions_and_archive_filters(app_config) -> None:
+    source = Path(__file__).parent / "fixtures" / "actions-nuggets-digest.json"
+    database = Database(app_config.db_path)
+    result = run_ingest(
+        app_config,
+        Secrets(),
+        source=source,
+        database=database,
+        now=datetime(2026, 9, 1, 18, 0, tzinfo=UTC),
+    )
+    assert result.actions_kept == 2
+    assert database.is_kept("2001")
+    assert database.is_kept("2002")
+    types_2001 = {item["type"] for item in database.list_tweet_actions("2001")}
+    assert types_2001 == {"try", "watch"}
+    steal = database.list_tweet_actions("2002")
+    assert steal[0]["type"] == "steal"
+
+    try_page = database.archive_page(action="try")
+    assert [item["id"] for item in try_page["items"]] == ["2001"]
+    assert {action["type"] for action in try_page["items"][0]["actions"]} == {"try", "watch"}
+    steal_page = database.archive_page(action="steal")
+    assert [item["id"] for item in steal_page["items"]] == ["2002"]
+    any_page = database.archive_page(action="any")
+    assert {item["id"] for item in any_page["items"]} == {"2001", "2002"}
+    facets = database.archive_facets()
+    assert facets["actions"]["try"] == 1
+    assert facets["action_any"] == 2
+
+    first_keep = database.keep_tweet("2001")
+    assert first_keep is False
+
+    app = create_app(app_config, Secrets(), database=database)
+    with TestClient(app) as client:
+        page = client.get("/archive?action=try")
+        assert page.status_code == 200
+        assert "Has action" in page.text
+        assert "action=try" in page.text
+        assert "action=read" in page.text
+        assert "action-badge" in page.text
+        assert "action-try" in page.text
+        assert "Open on X" in page.text
+        assert "https://x.com/builder/status/2001" in page.text
+        assert "New CLI for local RAG" in page.text
+        assert "writable interfaces" not in page.text
+        empty = client.get("/archive?action=follow")
+        assert empty.status_code == 200
+        assert "action filter" in empty.text
+
+
 def test_topic_filter_hidden_overrides_grid_display() -> None:
     css = Path("periscope/web/static/periscope.css").read_text()
     assert ".pick-row[hidden]" in css
     assert ".story-row[hidden]" in css
     assert "display: none" in css.split(".pick-row[hidden]")[1][:200]
-
