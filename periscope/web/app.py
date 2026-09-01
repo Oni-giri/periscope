@@ -120,6 +120,17 @@ def create_app(
         StaticFiles(directory=WEB_ROOT / "static"),
         name="static",
     )
+    media_dir = Path(config.data_dir) / "media"
+    try:
+        media_dir.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        media_dir = None
+    if media_dir is not None and media_dir.is_dir():
+        app.mount(
+            "/media",
+            StaticFiles(directory=media_dir),
+            name="media",
+        )
     app.mount("/mcp", mcp_server.streamable_http_app(), name="mcp")
     app.add_middleware(ResponseHeadersMiddleware)
     app.include_router(today.router)

@@ -35,13 +35,23 @@
     </div>
   </header>
 
-  <section aria-label="Digest items">
+  {% set topic_tags = digest.picks|map(attribute='tag')|unique|list %}
+  {% if topic_tags %}
+  <nav class="topic-filters" aria-label="Filter by topic" data-topic-filters>
+    <button type="button" class="topic-chip is-active" data-topic="">All</button>
+    {% for tag in topic_tags|sort %}
+      <button type="button" class="topic-chip" data-topic="{{ tag }}">{{ tag }}</button>
+    {% endfor %}
+  </nav>
+  {% endif %}
+
+  <section aria-label="Digest items" data-digest-items>
     {% set story = namespace(number=0) %}
     {% for item in digest["items"] %}
       {% if item.type == "cluster" %}
         {% set cluster = digest.clusters|selectattr("id", "equalto", item.id)|first %}
         {% set story.number = story.number + 1 %}
-        <article class="story-row">
+        <article class="story-row" data-topic="{{ cluster.tag or '' }}">
           <div class="story-number">{{ "%02d"|format(story.number) }}</div>
           <div class="story-body">
             <h2><a href="{{ url_for('cluster_detail', cluster_id=cluster.id) }}">{{ cluster.headline }}</a></h2>
@@ -59,23 +69,42 @@
         </article>
       {% else %}
         {% set pick = digest.picks|selectattr("id", "equalto", item.id)|first %}
-        <article class="pick-row">
+        {% set tweet_url = namespace(value=none) %}
+        {% for url in pick.tweet.urls or [] %}
+          {% if tweet_url.value is none and '/status/' in url %}
+            {% set tweet_url.value = url %}
+          {% endif %}
+        {% endfor %}
+        {% if tweet_url.value is none %}
+          {% set tweet_url.value = 'https://x.com/' ~ pick.tweet.author ~ '/status/' ~ pick.tweet.id %}
+        {% endif %}
+        {% set reason = pick.reason or '' %}
+        {% set commentary = pick.commentary or '' %}
+        {% set reason_dup = commentary and reason and (commentary == reason or commentary.startswith(reason)) %}
+        <article class="pick-row" data-topic="{{ pick.tag }}">
           <div class="pick-mark" aria-label="Pick">★</div>
           <div class="pick-body">
             <div class="pick-header">
               <span class="avatar">{{ pick.tweet.author[:2]|upper }}</span>
-              <strong>@{{ pick.tweet.author }}</strong>
+              <strong><a class="author-link" href="{{ tweet_url.value }}">@{{ pick.tweet.author }}</a></strong>
               <time datetime="{{ pick.tweet.created_at }}">{{ pick.tweet.created_at|absolute_time }}</time>
+              <a class="open-on-x" href="{{ tweet_url.value }}" rel="noopener noreferrer">Open on X</a>
               <span class="tag">{{ pick.tag }}</span>
             </div>
             <blockquote>{{ pick.tweet.text }}</blockquote>
-            <div class="pick-reason">{{ pick.reason }}</div>
-            {% if pick.commentary %}
-              <p class="pick-commentary">{{ pick.commentary }}</p>
+            {% if commentary %}
+              {% if reason and not reason_dup %}
+                <div class="pick-reason">{{ reason }}</div>
+              {% endif %}
+              <p class="pick-commentary">{{ commentary }}</p>
+            {% elif reason %}
+              <div class="pick-reason">{{ reason }}</div>
             {% endif %}
             {% if pick.tweet.media %}
-              <figure class="pick-media">
-                <img src="{{ pick.tweet.media[0] }}" alt="">
+              <figure class="pick-media{% if pick.tweet.media|length > 1 %} pick-media-gallery{% endif %}">
+                {% for src in pick.tweet.media %}
+                  <img src="{{ src }}" alt="">
+                {% endfor %}
               </figure>
             {% endif %}
           </div>
@@ -88,6 +117,40 @@
     <span>End of digest</span>
     <a href="{{ url_for('archive') }}">Search the archive</a>
   </footer>
+
+  <script>
+  (function () {
+    var nav = document.querySelector("[data-topic-filters]");
+    var items = document.querySelector("[data-digest-items]");
+    if (!nav || !items) return;
+    var chips = Array.prototype.slice.call(nav.querySelectorAll(".topic-chip"));
+    var rows = Array.prototype.slice.call(items.querySelectorAll("[data-topic]"));
+
+    function apply(topic) {
+      chips.forEach(function (chip) {
+        chip.classList.toggle("is-active", (chip.getAttribute("data-topic") || "") === topic);
+      });
+      rows.forEach(function (row) {
+        var rowTopic = row.getAttribute("data-topic") || "";
+        var show = !topic || rowTopic === topic;
+        row.hidden = !show;
+      });
+      var url = new URL(window.location.href);
+      if (topic) url.searchParams.set("tag", topic);
+      else url.searchParams.delete("tag");
+      window.history.replaceState({}, "", url.pathname + url.search + url.hash);
+    }
+
+    nav.addEventListener("click", function (event) {
+      var chip = event.target.closest(".topic-chip");
+      if (!chip || !nav.contains(chip)) return;
+      apply(chip.getAttribute("data-topic") || "");
+    });
+
+    var initial = new URL(window.location.href).searchParams.get("tag") || "";
+    if (initial) apply(initial);
+  })();
+  </script>
 {% else %}
   <section class="empty-state">
     <span class="empty-kicker">No digest yet</span>

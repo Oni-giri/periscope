@@ -93,14 +93,35 @@ uv run python -m periscope.jobs.ingest \
 
 ## X scrape and GLM curator
 
-Periscope itself does not fetch the algo feed. These optional CLIs dump signed-in
-home timelines, rank them with a cheap OpenRouter model, and write the ingest JSON
-the command above already accepts.
+Periscope itself does not fetch the algo feed. The happy path is one pipeline CLI
+that scrapes signed-in home timelines, ranks them with a cheap OpenRouter model,
+hydrates truncated keepers, caches images under `data/media/`, converts to ingest
+JSON, and loads the digest:
 
 ```bash
 uv sync --extra scrape
 uv run playwright install chromium
 
+# Chrome profile via env (or pass --profile)
+export PERISCOPE_X_CHROME_PROFILE=./data/chrome-profile
+
+uv run periscope-digest \
+  --out-dir ./data/x-dumps \
+  --watermark ./data/following_watermark.json \
+  --config config.example.toml \
+  --data-dir ./data \
+  --date 2026-08-28
+```
+
+Skip steps when replaying an existing dump:
+
+```bash
+uv run periscope-digest --skip-scrape --date 2026-08-28
+```
+
+Individual stages remain available:
+
+```bash
 uv run python -m periscope.x_scrape.scrape_feeds \
   --out-dir ./data/x-dumps \
   --profile ./data/chrome-profile \
@@ -123,9 +144,10 @@ uv run python -m periscope.jobs.ingest \
 ```
 
 The Chrome profile must already be signed in as the X account. Put
-`OPENROUTER_API_KEY` in `/data/secrets.env` or the environment. Dumps, the
-Chrome profile, and secrets stay in `data/` and are gitignored. The curator
-does not tweet, like, follow, or reply.
+`OPENROUTER_API_KEY` in `/data/secrets.env` or the environment. Dumps, cached
+media, the Chrome profile, and secrets stay in `data/` and are gitignored. The
+curator does not tweet, like, follow, or reply. Today serves cached images from
+`/media/...` when present and keeps original remote URLs if a download fails.
 
 
 Run ingestion only:

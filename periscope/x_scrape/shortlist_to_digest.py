@@ -9,6 +9,8 @@ from collections import defaultdict
 from datetime import UTC, date, datetime
 from pathlib import Path
 
+from periscope.x_scrape.media_cache import cache_digest_media
+
 TAG = {
     "ai": "AI",
     "latvia": "LATVIA",
@@ -73,11 +75,25 @@ def main() -> int:
     parser.add_argument("--shortlist", type=Path, default=Path("data/x-dumps/shortlist.json"))
     parser.add_argument("--out", type=Path)
     parser.add_argument("--date", default=datetime.now(UTC).date().isoformat())
+    parser.add_argument(
+        "--cache-media",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Download tweet images into data/media and rewrite URLs (default: on)",
+    )
+    parser.add_argument(
+        "--media-dir",
+        type=Path,
+        default=Path("data/media"),
+        help="Directory for cached media files",
+    )
     args = parser.parse_args()
     source = json.loads(args.shortlist.read_text())
     keepers = source["keepers"] if isinstance(source, dict) else source
     digest_date = date.fromisoformat(args.date).isoformat()
     doc = convert(keepers, digest_date)
+    if args.cache_media:
+        cache_digest_media(doc, media_dir=args.media_dir)
     out = args.out or args.shortlist.with_name(f"digest-{digest_date}.json")
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n")

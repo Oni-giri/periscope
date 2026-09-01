@@ -37,6 +37,7 @@ periscope-mcp-http = "periscope.mcp_server:http_main"
 periscope-scrape = "periscope.x_scrape.scrape_feeds:main"
 periscope-curate = "periscope.x_scrape.curate_feeds:main"
 periscope-shortlist = "periscope.x_scrape.shortlist_to_digest:main"
+periscope-digest = "periscope.x_scrape.digest_pipeline:main"
 
 [build-system]
 requires = ["hatchling"]
