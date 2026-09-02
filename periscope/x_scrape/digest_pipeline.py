@@ -188,6 +188,29 @@ def main() -> int:
                 digest_date,
             ],
         )
+        # Soft-fail: leftovers must not block the magazine.
+        print("==> ingest_overflow", flush=True)
+        try:
+            from periscope.config import load_config
+            from periscope.db import Database
+            from periscope.x_scrape.ingest_overflow import ingest_overflow
+
+            cfg = load_config(args.config, data_dir=args.data_dir)
+            database = Database(cfg.db_path)
+            database.initialize()
+            overflow = ingest_overflow(
+                database,
+                dumps_dir=out_dir,
+                digest_path=digest_path if digest_path.is_file() else None,
+            )
+            print(
+                "overflow "
+                f"leftovers={overflow.leftover_count} ads={overflow.skipped_ads} "
+                f"digest={overflow.skipped_digest} fetch_id={overflow.fetch_id}",
+                flush=True,
+            )
+        except Exception as exc:
+            print(f"ingest_overflow failed: {exc}; continuing", flush=True)
 
     print(f"pipeline done date={digest_date} digest={digest_path}", flush=True)
     return 0

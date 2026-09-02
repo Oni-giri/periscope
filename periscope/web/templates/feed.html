@@ -2,7 +2,7 @@
 {% block content %}
   <header class="page-header">
     <h1>Feed</h1>
-    <p class="lede">Everything fetched since the latest digest. This page ends where the stored fetch window ends.</p>
+    <p class="lede">Posts from the latest scrape that didn't make Today. This page ends.</p>
   </header>
 
   <form class="filter-bar" method="get" action="{{ url_for('feed') }}">
@@ -58,8 +58,8 @@
   {% else %}
     <section class="empty-state compact">
       <span class="empty-kicker">Nothing in this window</span>
-      <h2>No posts match these filters.</h2>
-      <p>Change the account or keep filter. New content appears only after the scheduled fetch runs.</p>
+      <h2>No leftover posts yet.</h2>
+      <p>Leftovers appear after a scrape+digest run.</p>
     </section>
   {% endif %}
 {% endblock %}

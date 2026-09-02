@@ -109,7 +109,7 @@ def test_empty_web_state(app_config) -> None:
         assert "No digest yet" in home.text
 
         feed = client.get("/feed")
-        assert "No posts match these filters" in feed.text
+        assert "Leftovers appear after a scrape+digest run." in feed.text
 
         archive = client.get("/archive")
         assert "Try a broader search" in archive.text
