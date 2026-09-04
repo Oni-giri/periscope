@@ -12,7 +12,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 OPENROUTER = "https://openrouter.ai/api/v1/chat/completions"
-DEFAULT_MODEL = "z-ai/glm-5.3-flash"
+DEFAULT_MODEL = "meta/muse-spark-1.3-contributor"
 ENV_PATH = Path(
     os.environ.get("PERISCOPE_SECRETS")
     or os.environ.get("OPENROUTER_ENV_FILE")
