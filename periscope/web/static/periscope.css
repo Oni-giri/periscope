@@ -302,12 +302,13 @@ select:focus-visible {
 }
 
 .edition-highlights {
-  max-width: 70ch;
-  margin-top: 16px;
+  max-width: 78ch;
+  margin-top: 18px;
   color: var(--fg);
-  font-size: 17px;
-  line-height: 1.6;
+  font-size: 18px;
+  line-height: 1.7;
   font-weight: 450;
+  letter-spacing: -0.005em;
 }
 
 .date-nav {
@@ -1719,7 +1720,7 @@ input::placeholder {
   flex-direction: column;
   gap: 0;
   margin-top: 14px;
-  max-width: 72ch;
+  max-width: 78ch;
 }
 
 .nugget-card,
@@ -1727,9 +1728,9 @@ input::placeholder {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 6px;
+  gap: 8px;
   width: 100%;
-  padding: 16px 0;
+  padding: 22px 0 20px;
   border: 0;
   border-bottom: 1px solid var(--rule);
   color: inherit;
@@ -1765,39 +1766,82 @@ input::placeholder {
 
 .nugget-why,
 .nugget-card span:last-child {
-  color: var(--fg-2);
-  font-size: 15px;
-  line-height: 1.55;
+  color: var(--fg);
+  font-size: 16px;
+  line-height: 1.65;
   white-space: normal;
   overflow: visible;
   text-overflow: unset;
   display: block;
-  max-width: 68ch;
+  max-width: 72ch;
+  -webkit-line-clamp: unset;
+  line-clamp: unset;
+}
+
+.nugget-actions {
+  width: 100%;
+  margin-top: 4px;
+  cursor: default;
+}
+
+.nugget-actions .action-strip {
+  margin-top: 8px;
+  max-width: 72ch;
 }
 
 .tweet-drawer {
-  width: min(520px, calc(100vw - 24px));
-  max-width: 520px;
-  max-height: min(90vh, 840px);
-  margin: auto;
+  position: fixed;
+  inset: 0 0 0 auto;
+  width: min(420px, 100vw);
+  max-width: 100vw;
+  height: 100%;
+  max-height: 100%;
+  margin: 0;
   padding: 0;
-  border: 1px solid var(--rule-2);
+  border: 0;
+  border-left: 1px solid var(--rule-2);
   background: var(--bg);
   color: var(--fg);
-  box-shadow: 0 24px 64px color-mix(in srgb, #000 28%, transparent);
+  box-shadow: -16px 0 48px color-mix(in srgb, #000 22%, transparent);
+  transform: translateX(0);
+}
+
+.tweet-drawer[open] {
+  animation: tweet-drawer-in 220ms ease-out;
+}
+
+@keyframes tweet-drawer-in {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
 }
 
 .tweet-drawer::backdrop {
-  background: color-mix(in srgb, #000 45%, transparent);
+  background: color-mix(in srgb, #000 48%, transparent);
+  animation: tweet-drawer-backdrop-in 220ms ease-out;
+}
+
+@keyframes tweet-drawer-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .tweet-drawer-panel {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 18px 20px 20px;
+  padding: 18px 20px 28px;
   overflow: auto;
-  max-height: min(90vh, 840px);
+  height: 100%;
+  max-height: 100%;
+  box-sizing: border-box;
 }
 
 .tweet-drawer-header {
@@ -1974,4 +2018,3 @@ input::placeholder {
 .topic-filters a.topic-chip {
   text-decoration: none;
 }
-

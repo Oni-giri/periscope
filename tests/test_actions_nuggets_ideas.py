@@ -112,6 +112,7 @@ def test_today_renders_actions_and_nuggets(app_config) -> None:
         assert page.status_code == 200
         assert "Nuggets" in page.text
         assert "nugget-row" in page.text
+        assert "nugget-actions" in page.text
         assert "tweet-drawer" in page.text
         assert "edition-highlights" in page.text
         assert "builder" in page.text and "writable interfaces" in page.text
@@ -268,6 +269,7 @@ def test_today_fallback_highlights_when_missing(app_config) -> None:
         assert page.status_code == 200
         assert "edition-highlights" in page.text
         assert "Today" in page.text
+        assert "Don&#39;t skim the wire" in page.text or "Don't skim the wire" in page.text
 
 
 def test_shortlist_convert_accepts_highlights() -> None:
@@ -293,3 +295,7 @@ def test_topic_filter_hidden_overrides_grid_display() -> None:
     assert "display: flex" in css.split(".nugget-list")[1][:120]
     assert "flex-direction: column" in css.split(".nugget-list")[1][:160]
     assert "display: none" in css.split(".pick-row[hidden]")[1][:200]
+    drawer = css.split(".tweet-drawer {", 1)[1].split(".tweet-drawer", 1)[0]
+    assert "inset: 0 0 0 auto" in drawer
+    assert "min(420px" in drawer
+    assert "margin: auto" not in drawer

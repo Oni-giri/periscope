@@ -39,40 +39,84 @@ def _first_sentence(text: str) -> str:
     return cleaned
 
 
+def _beat_from_pick(pick: dict) -> str:
+    """Prefer a short paragraph beat; fall back to first sentence."""
+
+    for key in ("nugget_why", "commentary", "reason"):
+        raw = " ".join(str(pick.get(key) or "").split()).strip()
+        if not raw:
+            continue
+        # Keep up to two sentences when the field is already paragraph-ish.
+        pieces: list[str] = []
+        rest = raw
+        for _ in range(2):
+            sentence = _first_sentence(rest)
+            if not sentence:
+                break
+            pieces.append(sentence)
+            if len(sentence) >= len(rest):
+                rest = ""
+                break
+            rest = rest[len(sentence) :].lstrip()
+        beat = " ".join(pieces).strip()
+        if beat:
+            return beat
+    return ""
+
+
 def fallback_edition_highlights(rendered: dict) -> str:
-    """Magazine-style lede from topics + early pick commentaries when highlights absent."""
+    """Opinionated magazine lede when stored highlights are missing.
+
+    Stitches 2–4 commentary/nugget beats into a longer paragraph instead of a
+    bland topic list.
+    """
 
     picks = list(rendered.get("picks") or [])
-    topics: list[str] = []
+    beats: list[str] = []
     seen: set[str] = set()
     for pick in picks:
-        tag = str(pick.get("tag") or "").strip()
-        if not tag or tag in seen:
+        beat = _beat_from_pick(pick)
+        if not beat:
             continue
-        seen.add(tag)
-        topics.append(tag)
-
-    if not topics:
-        topic_bit = ""
-    elif len(topics) == 1:
-        topic_bit = f"Today's edition leans {topics[0]}."
-    elif len(topics) == 2:
-        topic_bit = f"Today's edition spans {topics[0]} and {topics[1]}."
-    else:
-        topic_bit = f"Today's edition spans {', '.join(topics[:-1])}, and {topics[-1]}."
-
-    snippets: list[str] = []
-    for pick in picks:
-        raw = str(pick.get("commentary") or pick.get("reason") or pick.get("nugget_why") or "")
-        sentence = _first_sentence(raw)
-        if not sentence or sentence in snippets:
+        key = beat.lower()
+        if key in seen:
             continue
-        snippets.append(sentence)
-        if len(snippets) >= 3:
+        seen.add(key)
+        beats.append(beat)
+        if len(beats) >= 4:
             break
 
-    parts = [part for part in (topic_bit, " ".join(snippets)) if part]
-    return " ".join(parts).strip()
+    if not beats:
+        return ""
+
+    tags: list[str] = []
+    tag_seen: set[str] = set()
+    for pick in picks:
+        tag = str(pick.get("tag") or "").strip()
+        if not tag or tag in tag_seen:
+            continue
+        tag_seen.add(tag)
+        tags.append(tag)
+        if len(tags) >= 3:
+            break
+
+    if tags:
+        lane = ", ".join(tags[:-1]) + (f", and {tags[-1]}" if len(tags) > 1 else tags[0])
+        opener = (
+            f"Don't skim the wire — today's cut is opinionated on {lane}. "
+            "Here's the real story builders should care about:"
+        )
+    else:
+        opener = (
+            "Don't skim the wire — here's the real story in today's cut, "
+            "not a neutral topic list:"
+        )
+
+    body = " ".join(beats)
+    if not body.endswith((".", "!", "?")):
+        body = f"{body}."
+    closer = " Steal the patterns; ignore the noise."
+    return f"{opener} {body}{closer}".strip()
 
 
 def edition_highlights_for(rendered: dict | None) -> str:

@@ -123,6 +123,62 @@ def _host(url: str) -> str:
         return ""
 
 
+
+def _heuristic_nugget_why(*, commentary: str, text: str, tag: str = "") -> str:
+    """Longer opinionated why paragraph for heuristic enrich (cap 800)."""
+
+    def _clean(value: str) -> str:
+        return " ".join(str(value or "").split()).strip()
+
+    def _two_sentences(value: str) -> str:
+        rest = _clean(value)
+        if not rest:
+            return ""
+        pieces: list[str] = []
+        for _ in range(2):
+            cut = None
+            for sep in (". ", "! ", "? "):
+                idx = rest.find(sep)
+                if idx != -1 and (cut is None or idx < cut[0]):
+                    cut = (idx, sep[0])
+            if cut is None:
+                if rest:
+                    pieces.append(rest)
+                break
+            idx, ending = cut
+            pieces.append(rest[:idx] + ending)
+            rest = rest[idx + 2 :].lstrip()
+        return " ".join(pieces).strip()
+
+    commentary_c = _clean(commentary)
+    text_c = _clean(text)
+    base = commentary_c or _two_sentences(text_c) or "Reusable idea for building"
+    if commentary_c and len(base) < 160 and text_c:
+        extra = _two_sentences(text_c)
+        if extra and extra.lower() not in base.lower():
+            base = f"{base.rstrip('.')}." + " " + extra
+    if len(base) > 620:
+        trim = base[:620]
+        clipped = False
+        for sep in (". ", "! ", "? "):
+            pos = trim.rfind(sep)
+            if pos > 280:
+                trim = trim[: pos + 1]
+                clipped = True
+                break
+        base = trim.strip() if clipped else trim.rstrip() + "…"
+    lane = f" ({tag})" if tag else ""
+    closer = (
+        f" Builders should care{lane}: treat this as a pattern to steal or a step to take, "
+        "not a headline to skim."
+    )
+    if "Builders should care" in base:
+        out = base
+    else:
+        out = f"{base.rstrip('.')}." + closer
+    return out[:800]
+
+
 def heuristic_actions(
     *,
     text: str = "",
@@ -220,10 +276,8 @@ def heuristic_actions(
         action["type"] in {"try", "read", "steal"} for action in actions
     )
     nugget_why = ""
-    if nugget:
-        nugget_why = (
-            (commentary or text or "Reusable idea for building").strip().split("\n")[0][:800]
-        )
+    if nugget or actionable:
+        nugget_why = _heuristic_nugget_why(commentary=commentary, text=text, tag=tag)
     return {
         "actions": actions,
         "nugget": nugget,
@@ -330,8 +384,13 @@ def enrich_pick_fields(
         nugget = bool(heuristic["nugget"])
     if not actionable:
         actionable = bool(heuristic["actionable"]) or bool(actions)
-    if not nugget_why and nugget:
+    if not nugget_why and (nugget or actionable):
         nugget_why = heuristic["nugget_why"]
+    elif nugget_why and len(nugget_why) < 120 and (nugget or actionable):
+        # Raise short one-liners to a fuller heuristic paragraph when possible.
+        longer = str(heuristic.get("nugget_why") or "").strip()
+        if len(longer) > len(nugget_why):
+            nugget_why = longer
 
     pick["actions"] = actions[:MAX_ACTIONS]
     pick["nugget"] = nugget

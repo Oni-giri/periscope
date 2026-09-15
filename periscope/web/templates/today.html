@@ -64,18 +64,26 @@
           "tag": pick.tag,
           "kicker": ("Nugget" if pick.nugget else "Actionable")
         } %}
-        <button
-          type="button"
+        <article
           class="nugget-row"
           data-topic="{{ pick.tag }}"
           data-nugget='{{ nugget_payload|tojson }}'
+          tabindex="0"
+          role="button"
           aria-haspopup="dialog"
           aria-controls="tweet-drawer"
         >
           <span class="nugget-kicker">{% if pick.nugget %}Nugget{% else %}Actionable{% endif %} · {{ pick.tag }}</span>
           <strong class="nugget-author">@{{ pick.tweet.author }}</strong>
           <span class="nugget-why">{{ why }}</span>
-        </button>
+          {% set actions = pick.actions or [] %}
+          {% set tweet_id = pick.tweet.id %}
+          {% set handle = pick.tweet.author %}
+          {% set digest_date = digest.date %}
+          <div class="nugget-actions" data-stop-drawer>
+            {% include "partials/action_strip.html" %}
+          </div>
+        </article>
       {% endfor %}
     </div>
   </section>
@@ -309,6 +317,9 @@
     document.addEventListener("click", function (event) {
       var row = event.target.closest(".nugget-row");
       if (row) {
+        if (event.target.closest("[data-stop-drawer], .action-strip, .action-chip, .park-form, a, button, form, input, textarea, select, label")) {
+          return;
+        }
         event.preventDefault();
         var raw = row.getAttribute("data-nugget") || "{}";
         var payload = {};
@@ -337,6 +348,18 @@
     drawer.addEventListener("cancel", function (event) {
       event.preventDefault();
       closeDrawer();
+    });
+
+    document.addEventListener("keydown", function (event) {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      var row = event.target.closest(".nugget-row");
+      if (!row || event.target !== row) return;
+      if (event.target.closest("[data-stop-drawer], .action-strip")) return;
+      event.preventDefault();
+      var raw = row.getAttribute("data-nugget") || "{}";
+      var payload = {};
+      try { payload = JSON.parse(raw); } catch (err) { payload = {}; }
+      openDrawer(payload, row);
     });
   })();
   </script>
