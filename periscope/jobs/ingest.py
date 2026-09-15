@@ -192,14 +192,27 @@ def run_ingest(
     database = database or Database(config.db_path)
     database.initialize()
     database.seed(config, secrets)
-    fetch_id = database.start_fetch("ingest", now=assembled_at)
+
+    # Wall-clock for fetch_log; digest assembled_at is sticky across same-day re-ingests.
+    fetch_now = assembled_at
+    existing = database.get_digest(target_date)
+    if existing and existing.get("assembled_at"):
+        digest_assembled_at = datetime.fromisoformat(
+            str(existing["assembled_at"]).replace("Z", "+00:00")
+        )
+        if digest_assembled_at.tzinfo is None:
+            digest_assembled_at = digest_assembled_at.replace(tzinfo=UTC)
+    else:
+        digest_assembled_at = assembled_at
+
+    fetch_id = database.start_fetch("ingest", now=fetch_now)
 
     tweets = _collect_tweets(document)
     new_items = 0
     for payload in tweets:
-        if database.store_tweet(payload, fetch_id=fetch_id, fetched_at=assembled_at):
+        if database.store_tweet(payload, fetch_id=fetch_id, fetched_at=fetch_now):
             new_items += 1
-    database.finish_fetch(fetch_id, new_items=new_items, now=assembled_at)
+    database.finish_fetch(fetch_id, new_items=new_items, now=fetch_now)
 
     stored = database.get_tweets([str(item["id"]) for item in tweets])
     media_by_id = {str(item["id"]): item.get("media") or [] for item in tweets}
@@ -216,7 +229,7 @@ def run_ingest(
     pick_drafts, commentary_by_id, extras_by_id = _pick_drafts(document)
     digest = assemble_digest(
         digest_date=target_date,
-        assembled_at=assembled_at,
+        assembled_at=digest_assembled_at,
         tweets=stored,
         cluster_drafts=cluster_drafts,
         pick_drafts=pick_drafts,
@@ -241,7 +254,7 @@ def run_ingest(
     ]
     database.replace_digest(
         digest_date=target_date,
-        assembled_at=assembled_at,
+        assembled_at=digest_assembled_at,
         clusters=digest["clusters"],
         picks=digest["picks"],
         decisions=decisions,
@@ -259,7 +272,7 @@ def run_ingest(
             actions,
             digest_date=target_date.isoformat(),
         )
-        database.keep_tweet(tweet_id, now=assembled_at)
+        database.keep_tweet(tweet_id, now=fetch_now)
         actions_kept += 1
     return IngestResult(
         date=target_date.isoformat(),

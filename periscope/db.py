@@ -589,6 +589,15 @@ class Database:
         target = digest_date.isoformat()
         with self.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            existing = connection.execute(
+                "SELECT assembled_at FROM digests WHERE date = ?", (target,)
+            ).fetchone()
+            preserved_assembled_at = (
+                str(existing["assembled_at"]) if existing else isoformat(assembled_at)
+            )
+            rendered_payload: dict[str, Any] = dict(rendered)
+            if "assembled_at" in rendered_payload:
+                rendered_payload["assembled_at"] = preserved_assembled_at
             connection.execute("DELETE FROM picks WHERE digest_date = ?", (target,))
             connection.execute("DELETE FROM clusters WHERE digest_date = ?", (target,))
             connection.execute("DELETE FROM pick_decisions WHERE digest_date = ?", (target,))
@@ -640,11 +649,16 @@ class Database:
                 INSERT INTO digests(date, assembled_at, stats_json, rendered_json)
                 VALUES (?, ?, ?, ?)
                 ON CONFLICT(date) DO UPDATE SET
-                    assembled_at = excluded.assembled_at,
+                    assembled_at = digests.assembled_at,
                     stats_json = excluded.stats_json,
                     rendered_json = excluded.rendered_json
                 """,
-                (target, isoformat(assembled_at), _json(stats), _json(rendered)),
+                (
+                    target,
+                    preserved_assembled_at,
+                    _json(stats),
+                    _json(rendered_payload),
+                ),
             )
             connection.commit()
 

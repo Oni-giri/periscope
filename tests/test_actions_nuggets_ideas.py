@@ -125,6 +125,12 @@ def test_today_renders_actions_and_nuggets(app_config) -> None:
         assert "Follow @security_alice" in page.text
         assert "Prefer writable interfaces" in page.text
         assert "data-nugget=" in page.text
+        assert "nugget-meta" in page.text
+        assert 'src="https://example.test/thinker.jpg"' in page.text
+        assert "data-drawer-avatar" in page.text
+        assert '"avatar": "https://example.test/thinker.jpg"' in page.text or (
+            '"avatar":"https://example.test/thinker.jpg"' in page.text
+        )
 
 
 def test_ideas_park_list_done(app_config) -> None:

@@ -112,3 +112,85 @@ def test_overflow_feed_shows_leftover_not_empty_state(app_config, tmp_path: Path
         assert kept.status_code == 200
         assert "★" in kept.text
         assert database.is_kept("88")
+
+def test_reingest_preserves_assembled_at_keeps_feed(app_config, tmp_path: Path) -> None:
+    """Same-day UX re-ingest must not move assembled_at past overflow scrapes."""
+    dumps = tmp_path / "dumps"
+    dumps.mkdir()
+    _dump(
+        dumps / "foryou.json",
+        [
+            {
+                "status_id": "88",
+                "author_handle": "@leftover_alice",
+                "text": "did not make today",
+                "tweet_url": "https://x.com/leftover_alice/status/88",
+                "created_at": "2026-08-26T09:00:00+00:00",
+                "image_urls": [],
+                "is_ad": False,
+            }
+        ],
+    )
+    _dump(dumps / "following.json", [])
+    _dump(dumps / "timeline_tech.json", [])
+
+    source = Path(__file__).parent / "fixtures" / "agent-digest.json"
+    database = Database(app_config.db_path)
+    morning = datetime(2026, 8, 26, 4, 31, 34, tzinfo=UTC)
+    run_ingest(
+        app_config,
+        Secrets(),
+        source=source,
+        database=database,
+        now=morning,
+    )
+    first = database.get_digest("2026-08-26")
+    assert first is not None
+    assert first["assembled_at"] == "2026-08-26T04:31:34+00:00"
+    assert first["rendered"]["assembled_at"] == "2026-08-26T04:31:34+00:00"
+
+    overflow = ingest_overflow(
+        database,
+        dumps_dir=dumps,
+        digest_path=source,
+        now=datetime(2026, 8, 26, 4, 35, 56, tzinfo=UTC),
+    )
+    assert overflow.fetch_id is not None
+    assert overflow.leftover_count >= 1
+    batches_before = database.feed_batches()
+    assert any(batch["id"] == overflow.fetch_id for batch in batches_before)
+
+    reingest_doc = json.loads(source.read_text(encoding="utf-8"))
+    reingest_doc["highlights"] = "Re-ingest highlight tweak for UX."
+    revised = tmp_path / "digest-reingest.json"
+    revised.write_text(json.dumps(reingest_doc), encoding="utf-8")
+    run_ingest(
+        app_config,
+        Secrets(),
+        source=revised,
+        database=database,
+        now=datetime(2026, 8, 26, 11, 59, 48, tzinfo=UTC),
+    )
+
+    after = database.get_digest("2026-08-26")
+    assert after is not None
+    assert after["assembled_at"] == "2026-08-26T04:31:34+00:00"
+    assert after["rendered"]["assembled_at"] == "2026-08-26T04:31:34+00:00"
+    assert after["rendered"]["highlights"] == "Re-ingest highlight tweak for UX."
+
+    batches_after = database.feed_batches()
+    assert any(batch["id"] == overflow.fetch_id for batch in batches_after)
+    assert any(
+        tweet["id"] == "88"
+        for batch in batches_after
+        for tweet in batch["tweets"]
+    )
+
+    app = create_app(app_config, Secrets(), database=database)
+    with TestClient(app) as client:
+        page = client.get("/feed")
+        assert page.status_code == 200
+        assert "@leftover_alice" in page.text
+        assert "Nothing in this window" not in page.text
+        assert "No leftover posts yet" not in page.text
+

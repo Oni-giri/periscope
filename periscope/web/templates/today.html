@@ -67,6 +67,7 @@
           "created_at": pick.tweet.created_at,
           "text": pick.tweet.text,
           "media": pick.tweet.media or [],
+          "avatar": pick.tweet.avatar or none,
           "url": tweet_url.value,
           "tag": pick.tag,
           "kicker": ("Nugget" if pick.nugget else "Actionable")
@@ -80,8 +81,17 @@
           aria-haspopup="dialog"
           aria-controls="tweet-drawer"
         >
-          <span class="nugget-kicker">{% if pick.nugget %}Nugget{% else %}Actionable{% endif %} · {{ pick.tag }}</span>
-          <strong class="nugget-author">@{{ pick.tweet.author }}</strong>
+          <div class="nugget-meta">
+            {% if pick.tweet.avatar %}
+            <img class="avatar" src="{{ pick.tweet.avatar }}" alt="" width="24" height="24" data-initials="{{ pick.tweet.author[:2]|upper }}" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'avatar',textContent:this.dataset.initials||'?'}))">
+            {% else %}
+            <span class="avatar">{{ pick.tweet.author[:2]|upper }}</span>
+            {% endif %}
+            <div class="nugget-meta-copy">
+              <span class="nugget-kicker">{% if pick.nugget %}Nugget{% else %}Actionable{% endif %} · {{ pick.tag }}</span>
+              <strong class="nugget-author">@{{ pick.tweet.author }}</strong>
+            </div>
+          </div>
           <span class="nugget-why">{{ why }}</span>
           {% set actions = pick.actions or [] %}
           {% set tweet_id = pick.tweet.id %}
@@ -99,9 +109,12 @@
     <div class="tweet-drawer-panel">
       <header class="tweet-drawer-header">
         <div class="tweet-drawer-meta">
-          <strong class="tweet-drawer-author" data-drawer-author></strong>
-          <time class="tweet-drawer-time" data-drawer-time></time>
-          <span class="tag" data-drawer-tag hidden></span>
+          <span class="tweet-drawer-avatar" data-drawer-avatar aria-hidden="true"></span>
+          <div class="tweet-drawer-meta-copy">
+            <strong class="tweet-drawer-author" data-drawer-author></strong>
+            <time class="tweet-drawer-time" data-drawer-time></time>
+            <span class="tag" data-drawer-tag hidden></span>
+          </div>
         </div>
         <button type="button" class="square-button tweet-drawer-close" data-drawer-close aria-label="Close tweet drawer">×</button>
       </header>
@@ -247,6 +260,7 @@
     var drawer = document.getElementById("tweet-drawer");
     if (!drawer) return;
     var authorEl = drawer.querySelector("[data-drawer-author]");
+    var avatarEl = drawer.querySelector("[data-drawer-avatar]");
     var timeEl = drawer.querySelector("[data-drawer-time]");
     var tagEl = drawer.querySelector("[data-drawer-tag]");
     var textEl = drawer.querySelector("[data-drawer-text]");
@@ -285,8 +299,36 @@
       lastTrigger = null;
     }
 
+    function setDrawerAvatar(payload) {
+      if (!avatarEl) return;
+      avatarEl.innerHTML = "";
+      var initials = (payload.author || "?").replace(/^@/, "").slice(0, 2).toUpperCase() || "?";
+      if (payload.avatar) {
+        var img = document.createElement("img");
+        img.className = "avatar";
+        img.src = payload.avatar;
+        img.alt = "";
+        img.width = 24;
+        img.height = 24;
+        img.dataset.initials = initials;
+        img.onerror = function () {
+          var span = document.createElement("span");
+          span.className = "avatar";
+          span.textContent = img.dataset.initials || "?";
+          img.replaceWith(span);
+        };
+        avatarEl.appendChild(img);
+      } else {
+        var span = document.createElement("span");
+        span.className = "avatar";
+        span.textContent = initials;
+        avatarEl.appendChild(span);
+      }
+    }
+
     function openDrawer(payload, trigger) {
       lastTrigger = trigger || null;
+      setDrawerAvatar(payload || {});
       authorEl.textContent = payload.author ? "@" + payload.author : "";
       timeEl.textContent = formatTime(payload.created_at || "");
       timeEl.setAttribute("datetime", payload.created_at || "");

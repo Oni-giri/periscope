@@ -1767,6 +1767,19 @@ input::placeholder {
   outline-offset: 4px;
 }
 
+.nugget-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.nugget-meta-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
 .nugget-kicker {
   color: var(--accent);
   font-size: 11px;
@@ -1867,6 +1880,19 @@ input::placeholder {
 }
 
 .tweet-drawer-meta {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.tweet-drawer-avatar {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.tweet-drawer-meta-copy {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
