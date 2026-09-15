@@ -44,7 +44,7 @@ For each pick return 0-3 actions with type in: try, read, watch, steal, follow.
 
 Also set nugget=true when the post is primarily an idea/technique/contrarian take/reusable pattern
 (not breaking news). Set actionable=true when there is a concrete next step.
-nugget_why is one short line on why it matters for building.
+nugget_why is a short paragraph (up to ~800 chars) on why it matters for building.
 
 Return JSON only:
 {"picks":[{"tweet_id":"...","actions":[{"type":"try","label":"...","url":"","detail":""}],
@@ -222,7 +222,7 @@ def heuristic_actions(
     nugget_why = ""
     if nugget:
         nugget_why = (
-            (commentary or text or "Reusable idea for building").strip().split("\n")[0][:140]
+            (commentary or text or "Reusable idea for building").strip().split("\n")[0][:800]
         )
     return {
         "actions": actions,
@@ -266,7 +266,7 @@ def parse_enrich_response(payload: Any) -> dict[str, dict[str, Any]]:
             "actions": actions,
             "nugget": bool(item.get("nugget")),
             "actionable": bool(item.get("actionable")) or bool(actions),
-            "nugget_why": str(item.get("nugget_why") or "").strip()[:200],
+            "nugget_why": str(item.get("nugget_why") or "").strip()[:800],
         }
     return out
 
@@ -337,7 +337,7 @@ def enrich_pick_fields(
     pick["nugget"] = nugget
     pick["actionable"] = actionable
     if nugget_why:
-        pick["nugget_why"] = nugget_why[:200]
+        pick["nugget_why"] = nugget_why[:800]
     elif "nugget_why" in pick and not pick["nugget_why"]:
         pick.pop("nugget_why", None)
     return pick

@@ -223,6 +223,9 @@ def run_ingest(
         fetch_new_items=new_items,
     )
     digest = _attach_media_and_commentary(digest, tweets, commentary_by_id, extras_by_id)
+    highlights = document.get("highlights")
+    if isinstance(highlights, str) and highlights.strip():
+        digest["highlights"] = highlights.strip()
     decisions = [
         {
             "tweet_id": pick["tweet_id"],

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 import json
 from collections import defaultdict
 from datetime import UTC, date, datetime
@@ -23,7 +24,17 @@ TAG = {
 }
 
 
-def convert(keepers: list[dict], digest_date: str) -> dict:
+def convert(
+    keepers: list[dict],
+    digest_date: str,
+    *,
+    highlights: str | None = None,
+) -> dict:
+    """Build a Periscope ingest document from shortlist keepers.
+
+    Optional ``highlights`` is edition-level magazine prose for the Today lede.
+    Leave empty so a curator/agent can fill it later; ingest persists it when set.
+    """
     tweets: list[dict] = []
     picks: list[dict] = []
     by_topic: dict[str, list[str]] = defaultdict(list)
@@ -85,7 +96,10 @@ def convert(keepers: list[dict], digest_date: str) -> dict:
                 "tweet_ids": ids,
             }
         )
-    return {"date": digest_date, "tweets": tweets, "clusters": clusters, "picks": picks}
+    doc: dict = {"date": digest_date, "tweets": tweets, "clusters": clusters, "picks": picks}
+    if highlights and str(highlights).strip():
+        doc["highlights"] = str(highlights).strip()
+    return doc
 
 
 def main() -> int:
@@ -103,7 +117,10 @@ def main() -> int:
         "--media-dir",
         type=Path,
         default=Path("data/media"),
-        help="Directory for cached media files",
+        help=(
+            "Directory Periscope serves at /media (use {data_dir}/media, "
+            "not a magazine export images/ folder)"
+        ),
     )
     args = parser.parse_args()
     source = json.loads(args.shortlist.read_text())
@@ -111,6 +128,14 @@ def main() -> int:
     digest_date = date.fromisoformat(args.date).isoformat()
     doc = convert(keepers, digest_date)
     if args.cache_media:
+        media_dir = args.media_dir.resolve()
+        if media_dir.name == "images" or "x-recap" in media_dir.as_posix():
+            print(
+                "warning: --media-dir looks like a magazine export folder "
+                f"({media_dir}); Periscope serves {{data_dir}}/media at /media — "
+                "avatars will 404 in the UI if files are not also there",
+                file=sys.stderr,
+            )
         cache_digest_media(doc, media_dir=args.media_dir)
     out = args.out or args.shortlist.with_name(f"digest-{digest_date}.json")
     out.parent.mkdir(parents=True, exist_ok=True)

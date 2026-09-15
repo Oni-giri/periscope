@@ -11,6 +11,9 @@
           <span>{{ digest.stats["items"] }} items from {{ digest.stats.accounts }} accounts</span>
           <span>Assembled {{ digest.assembled_at|absolute_time }}</span>
         </div>
+        {% if edition_highlights %}
+          <p class="lede edition-highlights">{{ edition_highlights }}</p>
+        {% endif %}
       </div>
       <div class="date-nav" aria-label="Digest dates">
         {% if previous_date %}
@@ -41,14 +44,60 @@
     <p class="muted-copy">Ideas and techniques for building — not just topic news.</p>
     <div class="nugget-list">
       {% for pick in nuggets %}
-        <a class="nugget-card" href="#pick-{{ pick.id }}" data-topic="{{ pick.tag }}">
+        {% set tweet_url = namespace(value=none) %}
+        {% for url in pick.tweet.urls or [] %}
+          {% if tweet_url.value is none and '/status/' in url %}
+            {% set tweet_url.value = url %}
+          {% endif %}
+        {% endfor %}
+        {% if tweet_url.value is none %}
+          {% set tweet_url.value = 'https://x.com/' ~ pick.tweet.author ~ '/status/' ~ pick.tweet.id %}
+        {% endif %}
+        {% set why = pick.nugget_why or pick.commentary or pick.reason %}
+        {% set nugget_payload = {
+          "id": pick.id,
+          "author": pick.tweet.author,
+          "created_at": pick.tweet.created_at,
+          "text": pick.tweet.text,
+          "media": pick.tweet.media or [],
+          "url": tweet_url.value,
+          "tag": pick.tag,
+          "kicker": ("Nugget" if pick.nugget else "Actionable")
+        } %}
+        <button
+          type="button"
+          class="nugget-row"
+          data-topic="{{ pick.tag }}"
+          data-nugget='{{ nugget_payload|tojson }}'
+          aria-haspopup="dialog"
+          aria-controls="tweet-drawer"
+        >
           <span class="nugget-kicker">{% if pick.nugget %}Nugget{% else %}Actionable{% endif %} · {{ pick.tag }}</span>
-          <strong>@{{ pick.tweet.author }}</strong>
-          <span>{{ pick.nugget_why or pick.commentary or pick.reason }}</span>
-        </a>
+          <strong class="nugget-author">@{{ pick.tweet.author }}</strong>
+          <span class="nugget-why">{{ why }}</span>
+        </button>
       {% endfor %}
     </div>
   </section>
+
+  <dialog class="tweet-drawer" id="tweet-drawer" aria-label="Tweet details">
+    <div class="tweet-drawer-panel">
+      <header class="tweet-drawer-header">
+        <div class="tweet-drawer-meta">
+          <strong class="tweet-drawer-author" data-drawer-author></strong>
+          <time class="tweet-drawer-time" data-drawer-time></time>
+          <span class="tag" data-drawer-tag hidden></span>
+        </div>
+        <button type="button" class="square-button tweet-drawer-close" data-drawer-close aria-label="Close tweet drawer">×</button>
+      </header>
+      <blockquote class="tweet-drawer-text" data-drawer-text></blockquote>
+      <figure class="tweet-drawer-media" data-drawer-media hidden></figure>
+      <footer class="tweet-drawer-actions">
+        <a class="open-on-x" data-drawer-x href="#" rel="noopener noreferrer" target="_blank">Open on X</a>
+        <a class="accent-link" data-drawer-jump href="#">Jump to story</a>
+      </footer>
+    </div>
+  </dialog>
   {% endif %}
 
   {% set topic_tags = digest.picks|map(attribute='tag')|unique|list %}
@@ -76,7 +125,7 @@
               <div class="avatar-stack" aria-label="{{ cluster.tweets|length }} sources">
                 {% for tweet in cluster.tweets[:4] %}
                   {% if tweet.avatar %}
-                    <img class="avatar" src="{{ tweet.avatar }}" alt="" width="24" height="24">
+                    <img class="avatar" src="{{ tweet.avatar }}" alt="" width="24" height="24" data-initials="{{ tweet.author[:2]|upper }}" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'avatar',textContent:this.dataset.initials||'?'}))">
                   {% else %}
                     <span class="avatar">{{ tweet.author[:2]|upper }}</span>
                   {% endif %}
@@ -106,7 +155,7 @@
           <div class="pick-body">
             <div class="pick-header">
               {% if pick.tweet.avatar %}
-              <img class="avatar" src="{{ pick.tweet.avatar }}" alt="" width="24" height="24">
+              <img class="avatar" src="{{ pick.tweet.avatar }}" alt="" width="24" height="24" data-initials="{{ pick.tweet.author[:2]|upper }}" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'avatar',textContent:this.dataset.initials||'?'}))">
               {% else %}
               <span class="avatar">{{ pick.tweet.author[:2]|upper }}</span>
               {% endif %}
@@ -151,10 +200,9 @@
   (function () {
     var nav = document.querySelector("[data-topic-filters]");
     var items = document.querySelector("[data-digest-items]");
-    if (!nav || !items) return;
-    var chips = Array.prototype.slice.call(nav.querySelectorAll(".topic-chip"));
-    var rows = Array.prototype.slice.call(items.querySelectorAll("[data-topic]"));
-    var nuggets = Array.prototype.slice.call(document.querySelectorAll(".nugget-card[data-topic]"));
+    var nuggets = Array.prototype.slice.call(document.querySelectorAll(".nugget-row[data-topic]"));
+    var chips = nav ? Array.prototype.slice.call(nav.querySelectorAll(".topic-chip")) : [];
+    var rows = items ? Array.prototype.slice.call(items.querySelectorAll("[data-topic]")) : [];
 
     function apply(topic) {
       chips.forEach(function (chip) {
@@ -171,14 +219,125 @@
       window.history.replaceState({}, "", url.pathname + url.search + url.hash);
     }
 
-    nav.addEventListener("click", function (event) {
-      var chip = event.target.closest(".topic-chip");
-      if (!chip || !nav.contains(chip)) return;
-      apply(chip.getAttribute("data-topic") || "");
+    if (nav) {
+      nav.addEventListener("click", function (event) {
+        var chip = event.target.closest(".topic-chip");
+        if (!chip || !nav.contains(chip)) return;
+        apply(chip.getAttribute("data-topic") || "");
+      });
+      var initial = new URL(window.location.href).searchParams.get("tag") || "";
+      if (initial) apply(initial);
+    }
+
+    var drawer = document.getElementById("tweet-drawer");
+    if (!drawer) return;
+    var authorEl = drawer.querySelector("[data-drawer-author]");
+    var timeEl = drawer.querySelector("[data-drawer-time]");
+    var tagEl = drawer.querySelector("[data-drawer-tag]");
+    var textEl = drawer.querySelector("[data-drawer-text]");
+    var mediaEl = drawer.querySelector("[data-drawer-media]");
+    var xLink = drawer.querySelector("[data-drawer-x]");
+    var jumpLink = drawer.querySelector("[data-drawer-jump]");
+    var closeBtn = drawer.querySelector("[data-drawer-close]");
+    var lastTrigger = null;
+
+    function formatTime(value) {
+      if (!value) return "";
+      try {
+        var date = new Date(value);
+        if (Number.isNaN(date.getTime())) return value;
+        return date.toLocaleString(undefined, {
+          year: "numeric",
+          month: "short",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit"
+        });
+      } catch (err) {
+        return value;
+      }
+    }
+
+    function closeDrawer() {
+      if (typeof drawer.close === "function" && drawer.open) {
+        drawer.close();
+      } else {
+        drawer.removeAttribute("open");
+      }
+      if (lastTrigger && typeof lastTrigger.focus === "function") {
+        lastTrigger.focus();
+      }
+      lastTrigger = null;
+    }
+
+    function openDrawer(payload, trigger) {
+      lastTrigger = trigger || null;
+      authorEl.textContent = payload.author ? "@" + payload.author : "";
+      timeEl.textContent = formatTime(payload.created_at || "");
+      timeEl.setAttribute("datetime", payload.created_at || "");
+      if (payload.tag) {
+        tagEl.hidden = false;
+        tagEl.textContent = payload.tag;
+      } else {
+        tagEl.hidden = true;
+        tagEl.textContent = "";
+      }
+      textEl.textContent = payload.text || "";
+      mediaEl.innerHTML = "";
+      var media = Array.isArray(payload.media) ? payload.media : [];
+      if (media.length) {
+        mediaEl.hidden = false;
+        media.forEach(function (src) {
+          var img = document.createElement("img");
+          img.src = src;
+          img.alt = "";
+          mediaEl.appendChild(img);
+        });
+      } else {
+        mediaEl.hidden = true;
+      }
+      xLink.href = payload.url || "#";
+      jumpLink.href = payload.id ? "#pick-" + payload.id : "#";
+      if (typeof drawer.showModal === "function") {
+        drawer.showModal();
+      } else {
+        drawer.setAttribute("open", "");
+      }
+      closeBtn.focus();
+    }
+
+    document.addEventListener("click", function (event) {
+      var row = event.target.closest(".nugget-row");
+      if (row) {
+        event.preventDefault();
+        var raw = row.getAttribute("data-nugget") || "{}";
+        var payload = {};
+        try {
+          payload = JSON.parse(raw);
+        } catch (err) {
+          payload = {};
+        }
+        openDrawer(payload, row);
+        return;
+      }
+      if (event.target.closest("[data-drawer-close]")) {
+        event.preventDefault();
+        closeDrawer();
+        return;
+      }
+      if (event.target.closest("[data-drawer-jump]")) {
+        closeDrawer();
+      }
     });
 
-    var initial = new URL(window.location.href).searchParams.get("tag") || "";
-    if (initial) apply(initial);
+    drawer.addEventListener("click", function (event) {
+      if (event.target === drawer) closeDrawer();
+    });
+
+    drawer.addEventListener("cancel", function (event) {
+      event.preventDefault();
+      closeDrawer();
+    });
   })();
   </script>
 {% else %}

@@ -102,18 +102,27 @@ def test_today_renders_actions_and_nuggets(app_config) -> None:
     picks = digest["rendered"]["picks"]
     assert any(pick.get("actions") for pick in picks)
     assert any(pick.get("nugget") for pick in picks)
+    assert "writable interfaces" in digest["rendered"]["highlights"]
+    nugget = next(pick for pick in picks if pick.get("nugget"))
+    assert "inspectable, restartable" in nugget["nugget_why"]
 
     app = create_app(app_config, Secrets(), database=database)
     with TestClient(app) as client:
         page = client.get("/")
         assert page.status_code == 200
         assert "Nuggets" in page.text
+        assert "nugget-row" in page.text
+        assert "tweet-drawer" in page.text
+        assert "edition-highlights" in page.text
+        assert "builder" in page.text and "writable interfaces" in page.text
+        assert "inspectable, restartable" in page.text
         assert "action-strip" in page.text
         assert "Try example/rag-cli" in page.text
         assert "Park in inbox" in page.text
         assert ">Follow</button>" in page.text
         assert "Follow @security_alice" in page.text
         assert "Prefer writable interfaces" in page.text
+        assert "data-nugget=" in page.text
 
 
 def test_ideas_park_list_done(app_config) -> None:
@@ -239,8 +248,48 @@ def test_ingest_indexes_actions_and_archive_filters(app_config) -> None:
         assert "action filter" in empty.text
 
 
+
+
+def test_today_fallback_highlights_when_missing(app_config) -> None:
+    source = Path(__file__).parent / "fixtures" / "agent-digest.json"
+    database = Database(app_config.db_path)
+    run_ingest(
+        app_config,
+        Secrets(),
+        source=source,
+        database=database,
+        now=datetime(2026, 8, 26, 18, 0, tzinfo=UTC),
+    )
+    rendered = database.get_digest("2026-08-26")["rendered"]
+    assert not rendered.get("highlights")
+    app = create_app(app_config, Secrets(), database=database)
+    with TestClient(app) as client:
+        page = client.get("/")
+        assert page.status_code == 200
+        assert "edition-highlights" in page.text
+        assert "Today" in page.text
+
+
+def test_shortlist_convert_accepts_highlights() -> None:
+    keepers = [
+        {
+            "status_id": "55",
+            "author_handle": "@alice",
+            "created_at": "2026-09-01T10:00:00Z",
+            "text": "New model weights https://huggingface.co/acme/model",
+            "tweet_url": "https://x.com/alice/status/55",
+            "image_urls": [],
+            "curation": {"topic": "ai", "why": "weights to try locally", "score": 8},
+        }
+    ]
+    doc = convert(keepers, "2026-09-01", highlights="  AI weights land.  ")
+    assert doc["highlights"] == "AI weights land."
+
 def test_topic_filter_hidden_overrides_grid_display() -> None:
     css = Path("periscope/web/static/periscope.css").read_text()
     assert ".pick-row[hidden]" in css
     assert ".story-row[hidden]" in css
+    assert ".nugget-row[hidden]" in css
+    assert "display: flex" in css.split(".nugget-list")[1][:120]
+    assert "flex-direction: column" in css.split(".nugget-list")[1][:160]
     assert "display: none" in css.split(".pick-row[hidden]")[1][:200]

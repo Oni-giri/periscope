@@ -21,7 +21,10 @@
       "urls": [
         "https://x.com/thinker/status/2002"
       ],
-      "kind": "tweet"
+      "kind": "tweet",
+      "media": [
+        "https://example.test/media/writable.png"
+      ]
     }
   ],
   "clusters": [],
@@ -56,7 +59,7 @@
       "commentary": "Steal this as a design heuristic for local tools.",
       "nugget": true,
       "actionable": true,
-      "nugget_why": "Prefer writable interfaces when designing local tooling.",
+      "nugget_why": "Prefer writable interfaces when designing local tooling. Clever caches hide state and make recovery harder; a writable boundary keeps the system inspectable, restartable, and easier to steal as a pattern across side projects. Treat it as a default when sketching CLIs and agent tools.",
       "actions": [
         {
           "type": "steal",
@@ -64,5 +67,6 @@
         }
       ]
     }
-  ]
+  ],
+  "highlights": "A builder's morning: a local RAG CLI worth trying tonight, and a durable design heuristic \u2014 prefer writable interfaces over clever caches."
 }
