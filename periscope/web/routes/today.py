@@ -64,11 +64,28 @@ def _beat_from_pick(pick: dict) -> str:
     return ""
 
 
+def _normalize_highlights(raw) -> str:
+    """Coerce highlights to blank-line-separated paragraphs."""
+
+    if raw is None:
+        return ""
+    if isinstance(raw, list):
+        parts = [str(p).strip() for p in raw if str(p).strip()]
+        return "\n\n".join(parts)
+    text = str(raw).strip()
+    if not text:
+        return ""
+    # Collapse accidental Windows newlines; keep paragraph breaks.
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+    return "\n\n".join(paragraphs)
+
+
 def fallback_edition_highlights(rendered: dict) -> str:
     """Opinionated magazine lede when stored highlights are missing.
 
-    Stitches 2–4 commentary/nugget beats into a longer paragraph instead of a
-    bland topic list.
+    Stitches 2–4 commentary/nugget beats into short paragraphs (blank-line
+    separated) instead of one wall of text or a bland topic list.
     """
 
     picks = list(rendered.get("picks") or [])
@@ -83,7 +100,7 @@ def fallback_edition_highlights(rendered: dict) -> str:
             continue
         seen.add(key)
         beats.append(beat)
-        if len(beats) >= 4:
+        if len(beats) >= 3:
             break
 
     if not beats:
@@ -104,25 +121,26 @@ def fallback_edition_highlights(rendered: dict) -> str:
         lane = ", ".join(tags[:-1]) + (f", and {tags[-1]}" if len(tags) > 1 else tags[0])
         opener = (
             f"Don't skim the wire — today's cut is opinionated on {lane}. "
-            "Here's the real story builders should care about:"
+            "Here's the real story builders should care about."
         )
     else:
         opener = (
             "Don't skim the wire — here's the real story in today's cut, "
-            "not a neutral topic list:"
+            "not a neutral topic list."
         )
 
-    body = " ".join(beats)
-    if not body.endswith((".", "!", "?")):
-        body = f"{body}."
-    closer = " Steal the patterns; ignore the noise."
-    return f"{opener} {body}{closer}".strip()
+    paragraphs = [opener]
+    for beat in beats:
+        cleaned = beat if beat.endswith((".", "!", "?")) else f"{beat}."
+        paragraphs.append(cleaned)
+    paragraphs.append("Steal the patterns; ignore the noise.")
+    return "\n\n".join(paragraphs)
 
 
 def edition_highlights_for(rendered: dict | None) -> str:
     if not rendered:
         return ""
-    stored = str(rendered.get("highlights") or "").strip()
+    stored = _normalize_highlights(rendered.get("highlights"))
     if stored:
         return stored
     return fallback_edition_highlights(rendered)

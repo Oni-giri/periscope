@@ -115,6 +115,7 @@ def test_today_renders_actions_and_nuggets(app_config) -> None:
         assert "nugget-actions" in page.text
         assert "tweet-drawer" in page.text
         assert "edition-highlights" in page.text
+        assert page.text.count('<p class="edition-highlights-p">') >= 2
         assert "builder" in page.text and "writable interfaces" in page.text
         assert "inspectable, restartable" in page.text
         assert "action-strip" in page.text
@@ -268,6 +269,7 @@ def test_today_fallback_highlights_when_missing(app_config) -> None:
         page = client.get("/")
         assert page.status_code == 200
         assert "edition-highlights" in page.text
+        assert page.text.count('<p class="edition-highlights-p">') >= 2
         assert "Today" in page.text
         assert "Don&#39;t skim the wire" in page.text or "Don't skim the wire" in page.text
 
@@ -284,8 +286,8 @@ def test_shortlist_convert_accepts_highlights() -> None:
             "curation": {"topic": "ai", "why": "weights to try locally", "score": 8},
         }
     ]
-    doc = convert(keepers, "2026-09-01", highlights="  AI weights land.  ")
-    assert doc["highlights"] == "AI weights land."
+    doc = convert(keepers, "2026-09-01", highlights="  AI weights land.\n\nSteal the pattern.  ")
+    assert doc["highlights"] == "AI weights land.\n\nSteal the pattern."
 
 def test_topic_filter_hidden_overrides_grid_display() -> None:
     css = Path("periscope/web/static/periscope.css").read_text()

@@ -302,13 +302,28 @@ select:focus-visible {
 }
 
 .edition-highlights {
-  max-width: 78ch;
-  margin-top: 18px;
+  max-width: 72ch;
+  margin-top: 14px;
   color: var(--fg);
-  font-size: 18px;
-  line-height: 1.7;
-  font-weight: 450;
-  letter-spacing: -0.005em;
+  font-size: 16px;
+  line-height: 1.65;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+.edition-highlights .edition-highlights-p,
+.edition-highlights > p {
+  margin: 0 0 0.85em;
+  max-width: 72ch;
+  color: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  font-weight: inherit;
+}
+
+.edition-highlights .edition-highlights-p:last-child,
+.edition-highlights > p:last-child {
+  margin-bottom: 0;
 }
 
 .date-nav {

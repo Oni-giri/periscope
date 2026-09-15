@@ -224,7 +224,11 @@ def run_ingest(
     )
     digest = _attach_media_and_commentary(digest, tweets, commentary_by_id, extras_by_id)
     highlights = document.get("highlights")
-    if isinstance(highlights, str) and highlights.strip():
+    if isinstance(highlights, list):
+        parts = [str(p).strip() for p in highlights if str(p).strip()]
+        if parts:
+            digest["highlights"] = "\n\n".join(parts)
+    elif isinstance(highlights, str) and highlights.strip():
         digest["highlights"] = highlights.strip()
     decisions = [
         {

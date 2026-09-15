@@ -12,7 +12,14 @@
           <span>Assembled {{ digest.assembled_at|absolute_time }}</span>
         </div>
         {% if edition_highlights %}
-          <p class="lede edition-highlights">{{ edition_highlights }}</p>
+          <div class="edition-highlights">
+            {% for para in edition_highlights.split('\n\n') %}
+              {% set para = para.strip() %}
+              {% if para %}
+                <p class="edition-highlights-p">{{ para }}</p>
+              {% endif %}
+            {% endfor %}
+          </div>
         {% endif %}
       </div>
       <div class="date-nav" aria-label="Digest dates">
