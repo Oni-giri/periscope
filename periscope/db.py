@@ -437,6 +437,7 @@ class Database:
                 "x_is_configured": secrets.x_configured,
                 "anthropic_is_configured": secrets.anthropic_configured,
                 "telegram_is_configured": secrets.telegram_configured,
+                "openrouter_is_configured": secrets.openrouter_configured,
             }
             for key, value in flags.items():
                 connection.execute(

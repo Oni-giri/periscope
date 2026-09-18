@@ -69,3 +69,64 @@ def test_shortlist_to_digest_maps_topics_and_skips_singletons() -> None:
     assert len(doc["picks"]) == 3
     assert doc["picks"][0]["tag"] == "AI"
     assert doc["picks"][2]["tag"] == "LATVIA"
+
+
+def test_empty_interests_fail_without_default_fallback(tmp_path, monkeypatch, capsys) -> None:
+    import sqlite3
+    import sys
+
+    import pytest
+
+    from periscope.x_scrape.curate_feeds import (
+        NoInterestsError,
+        build_schema,
+        build_system_prompt,
+        load_interest_topics,
+        load_system_prompt_template,
+        main,
+    )
+
+    db = tmp_path / "periscope.db"
+    with sqlite3.connect(db) as connection:
+        connection.execute("CREATE TABLE topics (name TEXT)")
+        connection.commit()
+    monkeypatch.setenv("PERISCOPE_DB", str(db))
+    monkeypatch.setenv("PERISCOPE_DATA_DIR", str(tmp_path))
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+
+    with pytest.raises(NoInterestsError, match="NO_INTERESTS"):
+        load_interest_topics(db)
+    with pytest.raises(NoInterestsError, match="NO_INTERESTS"):
+        build_system_prompt([])
+    with pytest.raises(NoInterestsError, match="NO_INTERESTS"):
+        build_schema(None)
+
+    with sqlite3.connect(db) as connection:
+        connection.execute("INSERT INTO topics(name) VALUES ('AI'), ('Latvia')")
+        connection.commit()
+    assert load_interest_topics(db) == ["ai", "latvia"]
+    prompt = build_system_prompt(["AI", "Latvia"], template=None, data_dir=tmp_path)
+    assert "ai, latvia" in prompt
+    assert "ai|latvia|other" in prompt
+    schema = build_schema(["AI", "Latvia"])
+    assert schema["json_schema"]["schema"]["properties"]["items"]["items"]["properties"]["topic"][
+        "enum"
+    ] == ["ai", "latvia", "other"]
+
+    custom = tmp_path / "prompts" / "curator_system.md"
+    custom.parent.mkdir(parents=True)
+    custom.write_text("Rank for {interests}. enum={topic_enum}\n")
+    loaded = load_system_prompt_template(tmp_path)
+    assert "{interests}" in loaded
+    filled = build_system_prompt(["tools"], template=loaded)
+    assert "Rank for tools." in filled
+    assert "tools|other" in filled
+
+    empty = tmp_path / "empty.db"
+    with sqlite3.connect(empty) as connection:
+        connection.execute("CREATE TABLE topics (name TEXT)")
+        connection.commit()
+    monkeypatch.setenv("PERISCOPE_DB", str(empty))
+    monkeypatch.setattr(sys, "argv", ["curate", "--in-dir", str(tmp_path)])
+    assert main() == 2
+    assert "NO_INTERESTS" in capsys.readouterr().out

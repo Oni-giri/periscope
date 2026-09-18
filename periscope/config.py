@@ -106,6 +106,8 @@ class Secrets:
     anthropic_api_key: str | None = None
     telegram_bot_token: str | None = None
     telegram_chat_id: str | None = None
+    openrouter_api_key: str | None = None
+    openrouter_base_url: str | None = None
 
     @property
     def x_configured(self) -> bool:
@@ -118,6 +120,10 @@ class Secrets:
     @property
     def telegram_configured(self) -> bool:
         return bool(self.telegram_bot_token and self.telegram_chat_id)
+
+    @property
+    def openrouter_configured(self) -> bool:
+        return bool(self.openrouter_api_key)
 
 
 def _table(data: Mapping[str, Any], key: str) -> Mapping[str, Any]:
@@ -318,6 +324,8 @@ def load_secrets(
         "ANTHROPIC_API_KEY",
         "TELEGRAM_BOT_TOKEN",
         "TELEGRAM_CHAT_ID",
+        "OPENROUTER_API_KEY",
+        "OPENROUTER_BASE_URL",
     ):
         if environment.get(key):
             values[key] = environment[key]
@@ -332,4 +340,6 @@ def load_secrets(
         anthropic_api_key=optional("ANTHROPIC_API_KEY"),
         telegram_bot_token=optional("TELEGRAM_BOT_TOKEN"),
         telegram_chat_id=optional("TELEGRAM_CHAT_ID"),
+        openrouter_api_key=optional("OPENROUTER_API_KEY"),
+        openrouter_base_url=optional("OPENROUTER_BASE_URL"),
     )

@@ -34,7 +34,7 @@ def test_settings_separate_secrets_and_apply_runtime_updates(app_config) -> None
             headers={"HX-Request": "true"},
         )
         assert credentials.status_code == 200
-        assert "Credentials saved locally" in credentials.text
+        assert "Connections saved locally" in credentials.text
         assert "secret-auth" not in credentials.text
 
         secret_path = app_config.data_dir / "secrets.env"
@@ -174,5 +174,150 @@ def test_settings_separate_secrets_and_apply_runtime_updates(app_config) -> None
         assert "Event log" in page.text
         assert "Follow queue" in page.text
 
+        connections = client.get("/settings?tab=connections")
+        assert connections.status_code == 200
+        assert "OpenRouter" in connections.text
+        assert "Chrome profile" in connections.text
+        assert "Legacy" not in connections.text
+        assert "Anthropic" not in connections.text
+
         health = client.get("/health").json()
         assert len(health["scheduled_jobs"]) == 4
+
+
+def test_reading_interests_validate_and_prompt_reset(app_config) -> None:
+    from periscope.runtime import read_curator_prompt, read_enrich_prompt
+    from periscope.x_scrape.curate_feeds import DEFAULT_SYSTEM_TEMPLATE, load_system_prompt_template
+
+    database = Database(app_config.db_path)
+    app = create_app(app_config, Secrets(), database=database)
+
+    with TestClient(app) as client:
+        page = client.get("/settings?tab=reading")
+        assert page.status_code == 200
+        assert "Validate interests" in page.text
+        assert "Curator system prompt" in page.text
+        assert 'name="curator_prompt"' in page.text
+        assert "{interests}" in page.text
+        assert "fallback: ai, latvia" not in page.text
+
+        empty = client.post(
+            "/settings/reading",
+            data={
+                "feed_max_posts": "50",
+                "archive_default_filter": "has_action",
+                "interests": "  \n  ",
+                "curator_prompt": DEFAULT_SYSTEM_TEMPLATE,
+                "enrich_prompt": "keep-me",
+            },
+            headers={"HX-Request": "true"},
+        )
+        assert empty.status_code == 200
+        assert "NO_INTERESTS" in empty.text
+
+        saved = client.post(
+            "/settings/reading",
+            data={
+                "feed_max_posts": "50",
+                "archive_default_filter": "has_action",
+                "interests": "ai\nlatvia",
+                "curator_prompt": DEFAULT_SYSTEM_TEMPLATE,
+                "enrich_prompt": "Extract actions for {not-a-placeholder}.",
+            },
+            headers={"HX-Request": "true"},
+        )
+        assert "Reading settings saved" in saved.text
+        assert [item["name"] for item in database.list_topics()] == ["ai", "latvia"]
+
+        ok = client.post(
+            "/settings/reading/validate",
+            data={
+                "feed_max_posts": "50",
+                "archive_default_filter": "has_action",
+                "interests": "crypto\ntools for AI",
+                "curator_prompt": DEFAULT_SYSTEM_TEMPLATE,
+                "enrich_prompt": "x",
+            },
+            headers={"HX-Request": "true"},
+        )
+        assert ok.status_code == 200
+        assert "crypto, tools-for-ai" in ok.text
+        assert "KEEP if it is notable for these interests: crypto, tools-for-ai" in ok.text
+        assert "crypto|tools-for-ai|other" in ok.text
+        assert "Saved DB differs" in ok.text
+        assert 'name="interests"' in ok.text
+        assert "crypto" in ok.text
+
+        fail = client.post(
+            "/settings/reading/validate",
+            data={
+                "feed_max_posts": "50",
+                "archive_default_filter": "has_action",
+                "interests": "",
+                "curator_prompt": DEFAULT_SYSTEM_TEMPLATE,
+            },
+            headers={"HX-Request": "true"},
+        )
+        assert "NO_INTERESTS" in fail.text
+
+        custom_body = "Only keep {interests}. Topics={topic_enum}."
+        wrote = client.post(
+            "/settings/reading",
+            data={
+                "feed_max_posts": "50",
+                "archive_default_filter": "has_action",
+                "interests": "ai\nlatvia",
+                "curator_prompt": custom_body,
+                "enrich_prompt": "Extract actions for builders.",
+            },
+            headers={"HX-Request": "true"},
+        )
+        assert "Reading settings saved" in wrote.text
+        text, is_custom = read_curator_prompt(app_config)
+        assert is_custom
+        assert text == custom_body
+        assert custom_body.strip() in load_system_prompt_template(app_config.data_dir)
+        enrich_text, enrich_custom = read_enrich_prompt(app_config)
+        assert enrich_custom
+        assert enrich_text == "Extract actions for builders."
+
+        reset = client.post(
+            "/settings/reading/prompts/curator/reset",
+            headers={"HX-Request": "true"},
+        )
+        assert "reset to the built-in default" in reset.text
+        text, is_custom = read_curator_prompt(app_config)
+        assert is_custom is False
+        assert "{interests}" in text
+        assert not (app_config.data_dir / "prompts" / "curator_system.md").exists()
+
+        reset_enrich = client.post(
+            "/settings/reading/prompts/enrich/reset",
+            headers={"HX-Request": "true"},
+        )
+        assert "Enrich actions prompt reset" in reset_enrich.text
+        _, enrich_custom = read_enrich_prompt(app_config)
+        assert enrich_custom is False
+
+
+def test_connections_saves_openrouter(app_config) -> None:
+    database = Database(app_config.db_path)
+    app = create_app(app_config, Secrets(), database=database)
+    with TestClient(app) as client:
+        page = client.get("/settings?tab=connections")
+        assert "https://openrouter.ai/api/v1" in page.text
+        assert "Chrome profile" in page.text
+        saved = client.post(
+            "/settings/credentials",
+            data={
+                "openrouter_base_url": "https://openrouter.ai/api/v1",
+                "openrouter_api_key": "or-secret-key",
+            },
+            headers={"HX-Request": "true"},
+        )
+        assert "Connections saved locally" in saved.text
+        body = (app_config.data_dir / "secrets.env").read_text(encoding="utf-8")
+        assert "OPENROUTER_API_KEY=" in body
+        assert "or-secret-key" in body
+        assert "OPENROUTER_BASE_URL=" in body
+        assert "or-secret-key" not in saved.text

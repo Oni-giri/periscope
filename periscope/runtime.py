@@ -24,6 +24,8 @@ _SECRET_KEYS = (
     "ANTHROPIC_API_KEY",
     "TELEGRAM_BOT_TOKEN",
     "TELEGRAM_CHAT_ID",
+    "OPENROUTER_API_KEY",
+    "OPENROUTER_BASE_URL",
 )
 
 
@@ -256,3 +258,99 @@ def reset_picks_prompt(config: AppConfig, database: Database) -> Path:
     if not default.exists():
         raise RuntimeSettingsError("No default picks prompt has been installed yet")
     return save_picks_prompt(config, database, default.read_text(encoding="utf-8"))
+
+
+def _prompts_dir(config: AppConfig) -> Path:
+    return config.data_dir / "prompts"
+
+
+def _write_prompt_file(path: Path, content: str) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.tmp")
+    temporary.write_text(content.rstrip() + "\n", encoding="utf-8")
+    temporary.replace(path)
+    return path
+
+
+def curator_prompt_path(config: AppConfig) -> Path:
+    from periscope.x_scrape.curate_feeds import CURATOR_PROMPT_FILENAME
+
+    return _prompts_dir(config) / CURATOR_PROMPT_FILENAME
+
+
+def read_curator_prompt(config: AppConfig) -> tuple[str, bool]:
+    from periscope.x_scrape.curate_feeds import DEFAULT_SYSTEM_TEMPLATE
+
+    path = curator_prompt_path(config)
+    if path.is_file():
+        text = path.read_text(encoding="utf-8").strip()
+        if text:
+            return text, True
+    return DEFAULT_SYSTEM_TEMPLATE.strip(), False
+
+
+def save_curator_prompt(config: AppConfig, database: Database, content: str) -> Path:
+    from periscope.x_scrape.curate_feeds import DEFAULT_SYSTEM_TEMPLATE
+
+    clean = content.strip()
+    if not clean:
+        raise RuntimeSettingsError("The curator system prompt cannot be empty")
+    path = curator_prompt_path(config)
+    if clean == DEFAULT_SYSTEM_TEMPLATE.strip():
+        if path.exists():
+            path.unlink()
+        database.record_event("curator_prompt_reset", {"path": str(path), "via": "save-default"})
+        return path
+    _write_prompt_file(path, clean)
+    database.record_event("curator_prompt_updated", {"path": str(path)})
+    return path
+
+
+def reset_curator_prompt(config: AppConfig, database: Database) -> Path:
+    path = curator_prompt_path(config)
+    if path.exists():
+        path.unlink()
+    database.record_event("curator_prompt_reset", {"path": str(path)})
+    return path
+
+
+def enrich_prompt_path(config: AppConfig) -> Path:
+    from periscope.x_scrape.enrich_actions import ENRICH_PROMPT_FILENAME
+
+    return _prompts_dir(config) / ENRICH_PROMPT_FILENAME
+
+
+def read_enrich_prompt(config: AppConfig) -> tuple[str, bool]:
+    from periscope.x_scrape.enrich_actions import DEFAULT_ENRICH_SYSTEM
+
+    path = enrich_prompt_path(config)
+    if path.is_file():
+        text = path.read_text(encoding="utf-8").strip()
+        if text:
+            return text, True
+    return DEFAULT_ENRICH_SYSTEM.strip(), False
+
+
+def save_enrich_prompt(config: AppConfig, database: Database, content: str) -> Path:
+    from periscope.x_scrape.enrich_actions import DEFAULT_ENRICH_SYSTEM
+
+    clean = content.strip()
+    if not clean:
+        raise RuntimeSettingsError("The enrich actions prompt cannot be empty")
+    path = enrich_prompt_path(config)
+    if clean == DEFAULT_ENRICH_SYSTEM.strip():
+        if path.exists():
+            path.unlink()
+        database.record_event("enrich_prompt_reset", {"path": str(path), "via": "save-default"})
+        return path
+    _write_prompt_file(path, clean)
+    database.record_event("enrich_prompt_updated", {"path": str(path)})
+    return path
+
+
+def reset_enrich_prompt(config: AppConfig, database: Database) -> Path:
+    path = enrich_prompt_path(config)
+    if path.exists():
+        path.unlink()
+    database.record_event("enrich_prompt_reset", {"path": str(path)})
+    return path

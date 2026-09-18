@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-OPENROUTER = "https://openrouter.ai/api/v1/chat/completions"
 DEFAULT_MODEL = "meta/muse-spark-1.3-contributor"
 ENV_PATH = Path(
     os.environ.get("PERISCOPE_SECRETS")
@@ -33,7 +32,9 @@ _STEAL_WORDS = re.compile(
 _HANDLE_RE = re.compile(r"(?:follow|worth following|@)[\s:@]*([A-Za-z0-9_]{2,30})", re.I)
 _URL_RE = re.compile(r"https?://[^\s\]\)\"'<>]+", re.I)
 
-SYSTEM = """You extract actionable follow-ups from curated X posts for a builder with ADHD.
+ENRICH_PROMPT_FILENAME = "enrich_actions.md"
+
+DEFAULT_ENRICH_SYSTEM = """You extract actionable follow-ups from curated X posts for a builder with ADHD.
 
 For each pick return 0-3 actions with type in: try, read, watch, steal, follow.
 - try: tool/model/repo/CLI to try
@@ -52,6 +53,25 @@ Return JSON only:
 "nugget":false,"actionable":false,"nugget_why":""}]}
 Every input tweet_id must appear exactly once. Max 3 actions per pick. Empty url/detail ok.
 """
+
+SYSTEM = DEFAULT_ENRICH_SYSTEM
+
+
+def load_enrich_prompt_template(data_dir: Path | None = None) -> str:
+    """Custom enrich prompt if saved, else the built-in default."""
+
+    from periscope.x_scrape.curate_feeds import _data_dirs
+
+    folders = [Path(data_dir)] if data_dir is not None else _data_dirs()
+    for folder in folders:
+        path = folder / "prompts" / ENRICH_PROMPT_FILENAME
+        if not path.is_file():
+            continue
+        body = path.read_text(encoding="utf-8").strip()
+        if body:
+            return body
+    return DEFAULT_ENRICH_SYSTEM
+
 
 
 def load_dotenv(path: Path) -> None:
@@ -428,7 +448,7 @@ def _call_openrouter(key: str, model: str, compact_picks: list[dict[str, Any]]) 
         "model": model,
         "temperature": 0.2,
         "messages": [
-            {"role": "system", "content": SYSTEM},
+            {"role": "system", "content": load_enrich_prompt_template()},
             {
                 "role": "user",
                 "content": "Enrich these picks:\n"
@@ -437,8 +457,10 @@ def _call_openrouter(key: str, model: str, compact_picks: list[dict[str, Any]]) 
         ],
     }
     with httpx.Client(timeout=120) as client:
+        from periscope.x_scrape.curate_feeds import openrouter_chat_completions_url
+
         response = client.post(
-            OPENROUTER,
+            openrouter_chat_completions_url(),
             headers={
                 "Authorization": f"Bearer {key}",
                 "Content-Type": "application/json",

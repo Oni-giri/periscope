@@ -1559,6 +1559,41 @@ input::placeholder {
   margin-top: 14px;
 }
 
+.reading-actions {
+  margin: 8px 0 18px;
+}
+
+.validate-report {
+  max-width: 680px;
+  margin: 0 0 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--rule-2);
+  background: var(--inset);
+  font-size: 13px;
+}
+
+.validate-report.is-ok {
+  border-color: var(--accent);
+}
+
+.validate-report.is-fail {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+.validate-report pre {
+  margin: 8px 0 0;
+  white-space: pre-wrap;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.validate-report code {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+}
+
 .button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
@@ -2083,4 +2118,28 @@ input::placeholder {
 .edition-closed-copy span {
   color: var(--muted, #666);
   font-size: 0.95rem;
+}
+
+
+.advanced-block {
+  max-width: 680px;
+  margin: 18px 0 0;
+  border: 1px solid var(--rule);
+  padding: 12px 14px;
+}
+
+.advanced-block > summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.advanced-block[open] > summary {
+  margin-bottom: 12px;
+}
+
+.advanced-block .muted-copy {
+  margin: 0 0 12px;
 }

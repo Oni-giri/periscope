@@ -12,9 +12,15 @@ from periscope.jobs.fetchonly import build_xclient
 from periscope.runtime import (
     RuntimeSettingsError,
     effective_config,
+    read_curator_prompt,
+    read_enrich_prompt,
     read_picks_prompt,
     reload_secrets,
+    reset_curator_prompt,
+    reset_enrich_prompt,
     reset_picks_prompt,
+    save_curator_prompt,
+    save_enrich_prompt,
     save_picks_prompt,
     save_schedule_settings,
     save_ui_settings,
@@ -24,24 +30,42 @@ from periscope.runtime import (
 from periscope.scheduler import configure_scheduler, scheduled_jobs
 from periscope.telegram.bot import build_notifier
 from periscope.web.context import base_context, database_for
+from periscope.x_scrape.curate_feeds import (
+    DEFAULT_OPENROUTER_BASE,
+    NO_INTERESTS_MESSAGE,
+    NoInterestsError,
+    describe_interest_input,
+    normalize_openrouter_base,
+    parse_interest_lines,
+    require_topics,
+)
 
 router = APIRouter()
-_TABS = {"reading", "schedule", "system", "legacy"}
+_TABS = {"reading", "schedule", "system", "connections"}
+
+
+def _chrome_profile_path(config: Any) -> Any:
+    import os
+    from pathlib import Path
+
+    env = os.environ.get("PERISCOPE_X_CHROME_PROFILE")
+    if env:
+        return Path(env).expanduser()
+    return Path(config.data_dir) / "chrome-profile"
 
 
 def _parse_interest_names(raw: str) -> list[str]:
-    names: list[str] = []
-    seen: set[str] = set()
-    for part in raw.replace(",", "\n").splitlines():
-        name = part.strip()
-        if not name:
-            continue
-        key = name.lower()
-        if key in seen:
-            continue
-        seen.add(key)
-        names.append(name)
-    return names
+    return parse_interest_lines(raw)
+
+
+def _reading_form_values(form: Any) -> dict[str, str]:
+    return {
+        "interests": str(form.get("interests", "")),
+        "curator_prompt": str(form.get("curator_prompt", "")),
+        "enrich_prompt": str(form.get("enrich_prompt", "")),
+        "feed_max_posts": str(form.get("feed_max_posts", "50")),
+        "archive_default_filter": str(form.get("archive_default_filter", "has_action")),
+    }
 
 
 def _context(
@@ -50,15 +74,27 @@ def _context(
     tab: str,
     message: str | None = None,
     error: str | None = None,
+    interests_text: str | None = None,
+    curator_prompt: str | None = None,
+    enrich_prompt: str | None = None,
+    validation: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if tab not in _TABS:
         tab = "reading"
     database = database_for(request)
     config = effective_config(request.app.state.config, database)
     prompt, prompt_default_exists = read_picks_prompt(config)
+    curator_text, curator_is_custom = read_curator_prompt(config)
+    enrich_text, enrich_is_custom = read_enrich_prompt(config)
     reading = ui_settings(database)
     topics = database.list_topics()
     pending_follows = len(database.list_pending_follows())
+    if interests_text is None:
+        interests_text = "\n".join(str(item["name"]) for item in topics)
+    if curator_prompt is None:
+        curator_prompt = curator_text
+    if enrich_prompt is None:
+        enrich_prompt = enrich_text
     return {
         **base_context(request, page="settings", title="Settings"),
         "tab": tab,
@@ -66,19 +102,33 @@ def _context(
             ("reading", "Reading"),
             ("schedule", "Schedule"),
             ("system", "System"),
-            ("legacy", "Legacy"),
+            ("connections", "Connections"),
         ),
         "message": message,
         "error": error,
+        "validation": validation,
         "accounts": database.list_accounts(include_muted=True),
         "topics": topics,
-        "interests_text": "\n".join(str(item["name"]) for item in topics),
+        "interests_text": interests_text,
         "prompt": prompt,
         "prompt_default_exists": prompt_default_exists,
+        "curator_prompt": curator_prompt,
+        "curator_prompt_is_custom": curator_is_custom,
+        "enrich_prompt": enrich_prompt,
+        "enrich_prompt_is_custom": enrich_is_custom,
         "runtime_config": config,
         "settings": database.get_settings(),
         "ui": reading,
         "pending_follows": pending_follows,
+        "openrouter_base_url": (
+            getattr(request.app.state.secrets, "openrouter_base_url", None)
+            or DEFAULT_OPENROUTER_BASE
+        ),
+        "openrouter_configured": bool(
+            getattr(request.app.state.secrets, "openrouter_configured", False)
+        ),
+        "chrome_profile": str(_chrome_profile_path(request.app.state.config)),
+        "chrome_profile_exists": _chrome_profile_path(request.app.state.config).exists(),
         "events": database.recent_events(limit=30),
         "spend": database.spend_summary(),
         "jobs": scheduled_jobs(getattr(request.app.state, "scheduler", None)),
@@ -91,12 +141,25 @@ def _response(
     tab: str,
     message: str | None = None,
     error: str | None = None,
+    interests_text: str | None = None,
+    curator_prompt: str | None = None,
+    enrich_prompt: str | None = None,
+    validation: dict[str, Any] | None = None,
 ) -> HTMLResponse:
     partial = request.headers.get("HX-Request") == "true"
     return request.app.state.templates.TemplateResponse(
         request=request,
         name="partials/settings_panel.html" if partial else "settings.html",
-        context=_context(request, tab=tab, message=message, error=error),
+        context=_context(
+            request,
+            tab=tab,
+            message=message,
+            error=error,
+            interests_text=interests_text,
+            curator_prompt=curator_prompt,
+            enrich_prompt=enrich_prompt,
+            validation=validation,
+        ),
     )
 
 
@@ -109,13 +172,15 @@ async def settings(request: Request, tab: str = "reading") -> HTMLResponse:
 async def save_reading(request: Request) -> HTMLResponse:
     form = await request.form()
     database = database_for(request)
+    values = _reading_form_values(form)
     try:
+        names = _parse_interest_names(values["interests"])
+        require_topics(names)
         save_ui_settings(
             database,
-            feed_max_posts=str(form.get("feed_max_posts", "50")),
-            archive_default_filter=str(form.get("archive_default_filter", "has_action")),
+            feed_max_posts=values["feed_max_posts"],
+            archive_default_filter=values["archive_default_filter"],
         )
-        names = _parse_interest_names(str(form.get("interests", "")))
         existing = {
             str(item["name"]).lower(): item for item in database.list_topics()
         }
@@ -130,20 +195,88 @@ async def save_reading(request: Request) -> HTMLResponse:
                 }
             )
         database.replace_topics(topics)
-    except (ValueError, RuntimeSettingsError) as exc:
-        return _response(request, tab="reading", error=str(exc))
+        if "curator_prompt" in form:
+            save_curator_prompt(
+                request.app.state.config, database, values["curator_prompt"]
+            )
+        if "enrich_prompt" in form:
+            save_enrich_prompt(
+                request.app.state.config, database, values["enrich_prompt"]
+            )
+    except (ValueError, RuntimeSettingsError, NoInterestsError) as exc:
+        message = NO_INTERESTS_MESSAGE if isinstance(exc, NoInterestsError) else str(exc)
+        return _response(
+            request,
+            tab="reading",
+            error=message,
+            interests_text=values["interests"],
+            curator_prompt=values["curator_prompt"],
+            enrich_prompt=values["enrich_prompt"],
+        )
     return _response(request, tab="reading", message="Reading settings saved.")
+
+
+@router.post("/settings/reading/validate", response_class=HTMLResponse)
+async def validate_reading(request: Request) -> HTMLResponse:
+    form = await request.form()
+    values = _reading_form_values(form)
+    database = database_for(request)
+    saved_names = [str(item["name"]) for item in database.list_topics()]
+    template = values["curator_prompt"].strip() or None
+    report = describe_interest_input(
+        values["interests"],
+        saved_names=saved_names,
+        template=template,
+    )
+    extras = {
+        "interests_text": values["interests"],
+        "curator_prompt": values["curator_prompt"],
+        "enrich_prompt": values["enrich_prompt"],
+        "validation": report,
+    }
+    if report["ok"]:
+        message = report["message"]
+        if report["db_differs"]:
+            saved = ", ".join(report["saved_topics"]) or "(empty)"
+            message += f" Saved DB differs ({saved})."
+        return _response(request, tab="reading", message=message, **extras)
+    return _response(request, tab="reading", error=report["message"], **extras)
+
+
+@router.post("/settings/reading/prompts/{name}/reset", response_class=HTMLResponse)
+async def reset_reading_prompt(request: Request, name: str) -> HTMLResponse:
+    database = database_for(request)
+    config = request.app.state.config
+    try:
+        if name == "curator":
+            reset_curator_prompt(config, database)
+            message = "Curator system prompt reset to the built-in default."
+        elif name == "enrich":
+            reset_enrich_prompt(config, database)
+            message = "Enrich actions prompt reset to the built-in default."
+        else:
+            raise HTTPException(status_code=404, detail="Unknown prompt")
+    except (OSError, RuntimeSettingsError) as exc:
+        return _response(request, tab="reading", error=str(exc))
+    return _response(request, tab="reading", message=message)
 
 
 @router.post("/settings/credentials", response_class=HTMLResponse)
 async def save_credentials(request: Request) -> HTMLResponse:
+    import os
+
     form = await request.form()
+    base_raw = str(form.get("openrouter_base_url", "")).strip()
+    try:
+        if base_raw:
+            base_raw = normalize_openrouter_base(base_raw)
+    except ValueError as exc:
+        return _response(request, tab="connections", error=str(exc))
     updates = {
+        "OPENROUTER_API_KEY": str(form.get("openrouter_api_key", "")),
+        "OPENROUTER_BASE_URL": base_raw,
         "X_AUTH_TOKEN": str(form.get("x_auth_token", "")),
         "X_CT0": str(form.get("x_ct0", "")),
-        "ANTHROPIC_API_KEY": str(form.get("anthropic_api_key", "")),
-        "TELEGRAM_BOT_TOKEN": str(form.get("telegram_bot_token", "")),
-        "TELEGRAM_CHAT_ID": str(form.get("telegram_chat_id", "")),
     }
     try:
         update_secrets_file(request.app.state.config, updates)
@@ -151,17 +284,21 @@ async def save_credentials(request: Request) -> HTMLResponse:
         request.app.state.xclient = None
         request.app.state.mcp_tools.secrets = request.app.state.secrets
         request.app.state.mcp_tools.xclient = None
+        if updates["OPENROUTER_API_KEY"].strip():
+            os.environ["OPENROUTER_API_KEY"] = updates["OPENROUTER_API_KEY"].strip()
+        if base_raw:
+            os.environ["OPENROUTER_BASE_URL"] = base_raw
         database_for(request).seed(request.app.state.config, request.app.state.secrets)
         try:
             await request.app.state.telegram_polling.reconfigure(request.app.state.secrets)
         except Exception as exc:
             database_for(request).record_event("telegram_polling_failed", {"message": str(exc)})
     except (OSError, RuntimeSettingsError) as exc:
-        return _response(request, tab="legacy", error=str(exc))
+        return _response(request, tab="connections", error=str(exc))
     return _response(
         request,
-        tab="legacy",
-        message="Credentials saved locally. Blank fields kept their previous values.",
+        tab="connections",
+        message="Connections saved locally. Blank fields kept their previous values.",
     )
 
 
@@ -202,13 +339,13 @@ async def test_service(request: Request, service: str) -> HTMLResponse:
         )
         return _response(
             request,
-            tab="legacy",
+            tab="connections",
             error=f"{service.title()} test failed: {exc}",
         )
     database.record_event("credential_test_succeeded", {"service": service})
     return _response(
         request,
-        tab="legacy",
+        tab="connections",
         message=f"{service.title()} connection verified.",
     )
 
@@ -220,10 +357,10 @@ async def add_account(request: Request) -> HTMLResponse:
         handle = normalize_handle(str(form.get("handle", "")))
         added = database_for(request).add_account(handle)
     except ValueError as exc:
-        return _response(request, tab="legacy", error=str(exc))
+        return _response(request, tab="connections", error=str(exc))
     return _response(
         request,
-        tab="legacy",
+        tab="connections",
         message=f"@{handle} added." if added else f"@{handle} is already curated.",
     )
 
@@ -238,14 +375,14 @@ async def mute_account(request: Request, handle: str) -> HTMLResponse:
     if account is None:
         raise HTTPException(status_code=404, detail="Account not found")
     database.set_account_muted(handle, not bool(account["muted"]))
-    return _response(request, tab="legacy", message=f"@{handle} updated.")
+    return _response(request, tab="connections", message=f"@{handle} updated.")
 
 
 @router.post("/settings/accounts/{handle}/remove", response_class=HTMLResponse)
 async def remove_account(request: Request, handle: str) -> HTMLResponse:
     if not database_for(request).remove_account(handle):
         raise HTTPException(status_code=404, detail="Account not found")
-    return _response(request, tab="legacy", message=f"@{handle} removed locally.")
+    return _response(request, tab="connections", message=f"@{handle} removed locally.")
 
 
 @router.post("/settings/topics", response_class=HTMLResponse)
@@ -280,8 +417,8 @@ async def save_prompt(request: Request) -> HTMLResponse:
             str(form.get("prompt", "")),
         )
     except (OSError, RuntimeSettingsError) as exc:
-        return _response(request, tab="legacy", error=str(exc))
-    return _response(request, tab="legacy", message="Picks prompt saved as a new version.")
+        return _response(request, tab="connections", error=str(exc))
+    return _response(request, tab="connections", message="Picks prompt saved as a new version.")
 
 
 @router.post("/settings/prompt/reset", response_class=HTMLResponse)
@@ -289,10 +426,10 @@ async def reset_prompt(request: Request) -> HTMLResponse:
     try:
         reset_picks_prompt(request.app.state.config, database_for(request))
     except (OSError, RuntimeSettingsError) as exc:
-        return _response(request, tab="legacy", error=str(exc))
+        return _response(request, tab="connections", error=str(exc))
     return _response(
         request,
-        tab="legacy",
+        tab="connections",
         message="Picks prompt reset to the installed default.",
     )
 
@@ -330,4 +467,4 @@ async def run_job(request: Request, job: str) -> HTMLResponse:
     database_for(request).record_event("job_requested", {"job": job, "launched": launched})
     label = "Digest rebuild" if job == "rebuild" else job.title()
     message = f"{label} queued." if launched else f"{label} is already running."
-    return _response(request, tab="legacy", message=message)
+    return _response(request, tab="connections", message=message)

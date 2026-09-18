@@ -7,13 +7,15 @@ import argparse
 import json
 import os
 import re
+import sqlite3
 import sys
 import time
 from pathlib import Path
 
 import httpx
 
-OPENROUTER = "https://openrouter.ai/api/v1/chat/completions"
+DEFAULT_OPENROUTER_BASE = "https://openrouter.ai/api/v1"
+OPENROUTER = f"{DEFAULT_OPENROUTER_BASE}/chat/completions"
 DEFAULT_MODEL = "meta/muse-spark-1.3-contributor"
 ENV_PATH = Path(
     os.environ.get("PERISCOPE_SECRETS")
@@ -21,94 +23,181 @@ ENV_PATH = Path(
     or "data/secrets.env"
 )
 
+
+def normalize_openrouter_base(value: str | None = None) -> str:
+    """Return an OpenRouter-compatible API root (no /chat/completions suffix)."""
+
+    raw = str(value or "").strip() or os.environ.get("OPENROUTER_BASE_URL", "").strip()
+    raw = raw or DEFAULT_OPENROUTER_BASE
+    raw = raw.rstrip("/")
+    if raw.endswith("/chat/completions"):
+        raw = raw[: -len("/chat/completions")].rstrip("/")
+    if not raw.startswith(("http://", "https://")):
+        raise ValueError("OpenRouter base URL must start with http:// or https://")
+    return raw
+
+
+def openrouter_chat_completions_url(base: str | None = None) -> str:
+    return f"{normalize_openrouter_base(base)}/chat/completions"
+
+
+# Sample only — Settings placeholder / Reset-example. Never used as a runtime fallback.
 DEFAULT_INTERESTS = ("ai", "latvia", "crypto", "tools", "science", "business")
+NO_INTERESTS_MESSAGE = "NO_INTERESTS: set interests in Settings → Reading"
+CURATOR_PROMPT_FILENAME = "curator_system.md"
 
-DEFAULT_SYSTEM = """You rank tweets for a daily magazine. The reader has ADHD and does not want doomscroll bait.
+DEFAULT_SYSTEM_TEMPLATE = """You rank tweets for a daily magazine. The reader has ADHD and does not want doomscroll bait.
 
-KEEP if it is notable for: AI/ML models and tools, Latvia (informational, not electoral combat), crypto/DeFi (real protocol/product news, not shills), new developer tools, statistics/science, or serious business/tech.
+KEEP if it is notable for these interests: {interests}.
 
-SKIP: ads, ragebait, engagement bait, reply-guy nothing, Latvian electoral tactics, price-go-up memes, generic motivational posts, duplicates of a more complete tweet in the batch.
+SKIP: ads, ragebait, engagement bait, reply-guy nothing, price-go-up memes, generic motivational posts, duplicates of a more complete tweet in the batch.
 
 Return JSON only:
-{"items":[{"status_id":"...","keep":true,"score":0,"topic":"ai|latvia|crypto|tools|science|business|other","why":"one line","skip_reason":""}]}
+{"items":[{"status_id":"...","keep":true,"score":0,"topic":"{topic_enum}","why":"one line","skip_reason":""}]}
 score is 0-10. Keep only score >= 6 unless it is uniquely important.
 Every input status_id must appear exactly once.
 
 You MAY use **bold** sparingly in why/commentary text to emphasize important names, numbers, and key points for ADHD readability. Never invent other markup.
 """
 
-# Back-compat alias used by older imports/tests.
-SYSTEM = DEFAULT_SYSTEM
+# Back-compat aliases (unfilled template — not a runnable curator prompt).
+DEFAULT_SYSTEM = DEFAULT_SYSTEM_TEMPLATE
+SYSTEM = DEFAULT_SYSTEM_TEMPLATE
 
 
-def _interest_slug(name: str) -> str:
+class NoInterestsError(RuntimeError):
+    """Raised when the curator has no valid interest topics."""
+
+
+def interest_slug(name: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", str(name or "").strip().lower()).strip("-")
-    return slug or "other"
+    return slug
 
 
-def load_interest_topics(db_path: Path | None = None) -> list[str]:
-    """Read curator interests from the topics table; fall back to hardcoded defaults."""
+def parse_interest_lines(raw: str) -> list[str]:
+    """Split a Settings textarea (newlines or commas) into unique display names."""
 
-    candidates: list[Path] = []
-    if db_path is not None:
-        candidates.append(Path(db_path))
-    data_dir = os.environ.get("PERISCOPE_DATA_DIR")
-    if data_dir:
-        candidates.append(Path(data_dir) / "periscope.db")
-    candidates.append(Path("data/periscope.db"))
+    names: list[str] = []
+    seen: set[str] = set()
+    for part in str(raw or "").replace(",", "\n").splitlines():
+        name = part.strip()
+        if not name:
+            continue
+        key = name.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        names.append(name)
+    return names
+
+
+def normalize_interest_topics(names: list[str] | tuple[str, ...] | None) -> list[str]:
+    """Slugify interest names the way the curator loads them."""
+
+    seen: set[str] = set()
+    clean: list[str] = []
+    for name in names or []:
+        slug = interest_slug(str(name))
+        if not slug or slug == "other" or slug in seen:
+            continue
+        seen.add(slug)
+        clean.append(slug)
+    return clean
+
+
+def require_topics(topics: list[str] | tuple[str, ...] | None) -> list[str]:
+    clean = normalize_interest_topics(list(topics) if topics is not None else [])
+    if not clean:
+        raise NoInterestsError(NO_INTERESTS_MESSAGE)
+    return clean
+
+
+def topic_enum(topics: list[str]) -> str:
+    interests = require_topics(topics)
+    enum = [*interests, "other"]
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for item in enum:
+        if item in seen:
+            continue
+        seen.add(item)
+        ordered.append(item)
+    return "|".join(ordered)
+
+
+def keep_line_for(topics: list[str]) -> str:
+    interests = require_topics(topics)
+    return f"KEEP if it is notable for these interests: {', '.join(interests)}."
+
+
+def fill_prompt_template(template: str, topics: list[str]) -> str:
+    interests = require_topics(topics)
+    joined = ", ".join(interests)
+    enum = topic_enum(interests)
+    body = template if str(template or "").strip() else DEFAULT_SYSTEM_TEMPLATE
+    rendered = body.replace("{interests}", joined).replace("{topic_enum}", enum)
+    if "{interests}" not in body:
+        rendered = rendered.rstrip() + f"\n\n{keep_line_for(interests)}\nTopic enum: {enum}\n"
+    return rendered
+
+
+def _data_dirs(explicit: Path | None = None) -> list[Path]:
+    dirs: list[Path] = []
+    if explicit is not None:
+        dirs.append(Path(explicit))
+    env_dir = os.environ.get("PERISCOPE_DATA_DIR")
+    if env_dir:
+        dirs.append(Path(env_dir))
     env_db = os.environ.get("PERISCOPE_DB")
     if env_db:
-        candidates.insert(0, Path(env_db))
-
-    for candidate in candidates:
-        if not candidate.exists():
+        dirs.append(Path(env_db).expanduser().resolve().parent)
+    dirs.append(Path("data"))
+    unique: list[Path] = []
+    seen: set[str] = set()
+    for item in dirs:
+        key = str(item)
+        if key in seen:
             continue
-        try:
-            import sqlite3
+        seen.add(key)
+        unique.append(item)
+    return unique
 
-            with sqlite3.connect(candidate) as connection:
-                rows = connection.execute(
-                    "SELECT name FROM topics ORDER BY name COLLATE NOCASE"
-                ).fetchall()
-            names = [_interest_slug(row[0]) for row in rows if row and row[0]]
-            names = [name for name in names if name and name != "other"]
-            # de-dupe preserving order
-            seen: set[str] = set()
-            clean: list[str] = []
-            for name in names:
-                if name in seen:
-                    continue
-                seen.add(name)
-                clean.append(name)
-            if clean:
-                return clean
-        except Exception:
+
+def curator_prompt_path(data_dir: Path | None = None) -> Path:
+    dirs = _data_dirs(data_dir)
+    return dirs[0] / "prompts" / CURATOR_PROMPT_FILENAME
+
+
+def load_system_prompt_template(data_dir: Path | None = None) -> str:
+    """Custom file if present and non-empty, else the built-in default template."""
+
+    folders = [Path(data_dir)] if data_dir is not None else _data_dirs()
+    for folder in folders:
+        path = folder / "prompts" / CURATOR_PROMPT_FILENAME
+        if not path.is_file():
             continue
-    return list(DEFAULT_INTERESTS)
+        text = path.read_text(encoding="utf-8").strip()
+        if text:
+            return text
+    return DEFAULT_SYSTEM_TEMPLATE
 
 
-def build_system_prompt(topics: list[str] | None = None) -> str:
-    interests = topics or list(DEFAULT_INTERESTS)
-    joined = ", ".join(interests)
-    enum = "|".join([*interests, "other"])
-    return (
-        "You rank tweets for a daily magazine. The reader has ADHD and does not want doomscroll bait.\n\n"
-        f"KEEP if it is notable for these interests: {joined}.\n\n"
-        "SKIP: ads, ragebait, engagement bait, reply-guy nothing, price-go-up memes, "
-        "generic motivational posts, duplicates of a more complete tweet in the batch.\n\n"
-        "Return JSON only:\n"
-        '{"items":[{"status_id":"...","keep":true,"score":0,'
-        f'"topic":"{enum}","why":"one line","skip_reason":""}}]}}\n'
-        "score is 0-10. Keep only score >= 6 unless it is uniquely important.\n"
-        "Every input status_id must appear exactly once.\n\n"
-        "You MAY use **bold** sparingly in why/commentary text to emphasize important names, numbers, and key points for ADHD readability. Never invent other markup.\n"
-    )
+def build_system_prompt(
+    topics: list[str] | None = None,
+    *,
+    template: str | None = None,
+    data_dir: Path | None = None,
+) -> str:
+    interests = require_topics(topics)
+    body = DEFAULT_SYSTEM_TEMPLATE if template is None else template
+    if template is None:
+        body = load_system_prompt_template(data_dir)
+    return fill_prompt_template(body, interests)
 
 
 def build_schema(topics: list[str] | None = None) -> dict:
-    interests = topics or list(DEFAULT_INTERESTS)
+    interests = require_topics(topics)
     enum = [*interests, "other"]
-    # ensure unique
     seen: set[str] = set()
     clean_enum: list[str] = []
     for item in enum:
@@ -158,7 +247,81 @@ def build_schema(topics: list[str] | None = None) -> dict:
     }
 
 
-SCHEMA = build_schema()
+def load_interest_topics(db_path: Path | None = None) -> list[str]:
+    """Read curator interests from the topics table. Empty list is an error."""
+
+    candidates: list[Path] = []
+    if db_path is not None:
+        candidates.append(Path(db_path))
+    env_db = os.environ.get("PERISCOPE_DB")
+    if env_db:
+        candidates.append(Path(env_db))
+    for folder in _data_dirs():
+        candidates.append(folder / "periscope.db")
+
+    seen_paths: set[str] = set()
+    last_error: Exception | None = None
+    for candidate in candidates:
+        key = str(candidate)
+        if key in seen_paths:
+            continue
+        seen_paths.add(key)
+        if not candidate.exists():
+            continue
+        try:
+            with sqlite3.connect(candidate) as connection:
+                rows = connection.execute(
+                    "SELECT name FROM topics ORDER BY name COLLATE NOCASE"
+                ).fetchall()
+            names = [str(row[0]) for row in rows if row and row[0]]
+            return require_topics(names)
+        except NoInterestsError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - try the next candidate
+            last_error = exc
+            continue
+    if last_error is not None:
+        raise NoInterestsError(NO_INTERESTS_MESSAGE) from last_error
+    raise NoInterestsError(NO_INTERESTS_MESSAGE)
+
+
+def describe_interest_input(
+    raw: str,
+    *,
+    saved_names: list[str] | None = None,
+    template: str | None = None,
+) -> dict:
+    """Validate a Settings textarea (or saved DB names) the way the curator would."""
+
+    display_names = parse_interest_lines(raw)
+    slugs = normalize_interest_topics(display_names)
+    saved_slugs = normalize_interest_topics(saved_names or [])
+    result: dict = {
+        "ok": bool(slugs),
+        "display_names": display_names,
+        "topics": slugs,
+        "saved_topics": saved_slugs,
+        "db_differs": slugs != saved_slugs,
+        "keep_line": "",
+        "topic_enum": "",
+        "prompt_snippet": "",
+        "message": "",
+    }
+    if not slugs:
+        result["message"] = NO_INTERESTS_MESSAGE
+        return result
+    rendered = fill_prompt_template(template or DEFAULT_SYSTEM_TEMPLATE, slugs)
+    keep = keep_line_for(slugs)
+    for line in rendered.splitlines():
+        if line.startswith("KEEP"):
+            keep = line.strip()
+            break
+    enum = topic_enum(slugs)
+    result["keep_line"] = keep
+    result["topic_enum"] = enum
+    result["prompt_snippet"] = f'{keep}\ntopic: "{enum}"'
+    result["message"] = f"Curator would load: {', '.join(slugs)}"
+    return result
 
 
 def load_dotenv(path: Path) -> None:
@@ -226,16 +389,16 @@ def call_openrouter(
     model: str,
     batch: list[dict],
     *,
-    system: str | None = None,
-    schema: dict | None = None,
+    system: str,
+    schema: dict,
 ) -> list[dict]:
     payload = {
         "model": model,
         "temperature": 0.1,
         "reasoning": {"effort": "low"},
-        "response_format": schema or SCHEMA,
+        "response_format": schema,
         "messages": [
-            {"role": "system", "content": system or SYSTEM},
+            {"role": "system", "content": system},
             {
                 "role": "user",
                 "content": "Rank these tweets:\n" + json.dumps(batch, ensure_ascii=False),
@@ -243,7 +406,7 @@ def call_openrouter(
         ],
     }
     r = client.post(
-        OPENROUTER,
+        openrouter_chat_completions_url(),
         headers={
             "Authorization": f"Bearer {key}",
             "Content-Type": "application/json",
@@ -278,9 +441,13 @@ def main() -> int:
 
     load_dotenv(ENV_PATH)
     load_dotenv(Path(".env"))
-    interests = load_interest_topics()
-    system_prompt = build_system_prompt(interests)
-    response_schema = build_schema(interests)
+    try:
+        interests = load_interest_topics()
+        system_prompt = build_system_prompt(interests)
+        response_schema = build_schema(interests)
+    except NoInterestsError as exc:
+        print(str(exc), flush=True)
+        return 2
     print(f"interests: {', '.join(interests)}", flush=True)
     key = os.environ.get("OPENROUTER_API_KEY", "").strip()
     if not key:

@@ -9,7 +9,7 @@
   {% if error %}<p class="form-error" role="alert">{{ error }}</p>{% endif %}
 
   {% if tab == "reading" %}
-    <form class="settings-form" method="post" action="/settings/reading" hx-post="/settings/reading" hx-target="#settings-panel" hx-swap="outerHTML">
+    <form id="reading-form" class="settings-form" method="post" action="/settings/reading" hx-post="/settings/reading" hx-target="#settings-panel" hx-swap="outerHTML">
       <section class="settings-section">
         <h2 class="section-label">Feed and Archive</h2>
         <p class="muted-copy">Hard-cap leftovers and choose how Archive opens. Tweaking here beats editing code.</p>
@@ -31,12 +31,47 @@
 
       <section class="settings-section">
         <h2 class="section-label">Interests / topics</h2>
-        <p class="muted-copy">One topic per line. The scrape curator reads these when present (fallback: ai, latvia, crypto, tools, science, business).</p>
+        <p class="muted-copy">Required. One topic per line (commas also work). Empty list fails curation — there is no built-in fallback. Sample placeholder: ai, latvia, crypto, tools, science, business.</p>
         <textarea name="interests" rows="8" placeholder="ai&#10;latvia&#10;crypto&#10;tools&#10;science&#10;business">{{ interests_text }}</textarea>
+        {% if validation %}
+          <div class="validate-report {% if validation.ok %}is-ok{% else %}is-fail{% endif %}" role="status">
+            {% if validation.ok %}
+              <p>Curator would load: <code>{{ validation.topics|join(', ') }}</code></p>
+              <pre>{{ validation.prompt_snippet }}</pre>
+              {% if validation.db_differs %}
+                <p>Saved DB differs: <code>{{ validation.saved_topics|join(', ') or '(empty)' }}</code></p>
+              {% endif %}
+            {% else %}
+              <p>No valid topics after slugify. Add at least one interest.</p>
+            {% endif %}
+          </div>
+        {% endif %}
+      </section>
+
+      <section class="settings-section">
+        <h2 class="section-label">Curator system prompt</h2>
+        <p class="muted-copy">Editable template for the scrape curator. Placeholders <code>{interests}</code> and <code>{topic_enum}</code> are filled from the topics field at run time. If you omit <code>{interests}</code>, the KEEP line is appended automatically.</p>
+        <textarea name="curator_prompt" rows="12" spellcheck="false">{{ curator_prompt }}</textarea>
         <div class="form-actions">
-          <button class="button" type="submit">Save reading settings</button>
+          <button class="button button-muted" type="button" hx-post="/settings/reading/prompts/curator/reset" hx-target="#settings-panel" hx-swap="outerHTML">Reset to default</button>
+          {% if curator_prompt_is_custom %}<span class="muted-copy">Custom prompt saved</span>{% endif %}
         </div>
       </section>
+
+      <section class="settings-section">
+        <h2 class="section-label">Enrich actions prompt</h2>
+        <p class="muted-copy">Second-pass magazine prompt that extracts try/read/watch/steal/follow actions and nugget flags. Used by the live scrape pipeline after ranking.</p>
+        <textarea name="enrich_prompt" rows="10" spellcheck="false">{{ enrich_prompt }}</textarea>
+        <div class="form-actions">
+          <button class="button button-muted" type="button" hx-post="/settings/reading/prompts/enrich/reset" hx-target="#settings-panel" hx-swap="outerHTML">Reset to default</button>
+          {% if enrich_prompt_is_custom %}<span class="muted-copy">Custom prompt saved</span>{% endif %}
+        </div>
+      </section>
+
+      <div class="form-actions reading-actions">
+        <button class="button" type="submit">Save reading settings</button>
+        <button class="button button-muted" type="button" hx-post="/settings/reading/validate" hx-include="#reading-form" hx-target="#settings-panel" hx-swap="outerHTML">Validate interests</button>
+      </div>
     </form>
 
     <section class="settings-section">
@@ -106,58 +141,46 @@
       </div>
     </section>
 
-  {% else %}
-    <details class="settings-section" open>
-      <summary class="section-label">Legacy (list pipeline)</summary>
-      <p class="muted-copy">X list cookies, Anthropic, Telegram, seed accounts, and list-mode job runners. Unused on the live scrape/Tailscale path — kept for Umbrel/list mode only.</p>
+  {% elif tab == "connections" %}
+    <form class="settings-form" method="post" action="/settings/credentials" hx-post="/settings/credentials" hx-target="#settings-panel" hx-swap="outerHTML">
+      <section class="settings-section">
+        <h2 class="section-label">LLM / OpenRouter</h2>
+        <p class="muted-copy">Used by the scrape curator and the enrich-actions pass. Base URL is the API root (we append <code>/chat/completions</code>).</p>
+        <div class="form-grid">
+          <label>
+            <span>API base URL</span>
+            <input name="openrouter_base_url" value="{{ openrouter_base_url }}" placeholder="https://openrouter.ai/api/v1" autocomplete="off">
+          </label>
+          <label>
+            <span>API key</span>
+            <input type="password" name="openrouter_api_key" autocomplete="off" placeholder="{% if openrouter_configured %}Configured, enter to replace{% else %}Not configured{% endif %}">
+          </label>
+        </div>
+      </section>
 
-      <form class="settings-form" method="post" action="/settings/credentials" hx-post="/settings/credentials" hx-target="#settings-panel" hx-swap="outerHTML">
-        <h3 class="section-label">X session</h3>
-        <div class="form-grid">
-          <label><span>auth_token</span><input type="password" name="x_auth_token" autocomplete="off" placeholder="{% if health.configured.x_is_configured %}Configured, enter to replace{% else %}Not configured{% endif %}"></label>
-          <label><span>ct0</span><input type="password" name="x_ct0" autocomplete="off" placeholder="{% if health.configured.x_is_configured %}Configured, enter to replace{% else %}Not configured{% endif %}"></label>
-        </div>
-        <h3 class="section-label">Anthropic</h3>
-        <div class="form-grid">
-          <label><span>API key</span><input type="password" name="anthropic_api_key" autocomplete="off" placeholder="{% if health.configured.anthropic_is_configured %}Configured, enter to replace{% else %}Not configured{% endif %}"></label>
-        </div>
-        <h3 class="section-label">Telegram</h3>
-        <div class="form-grid">
-          <label><span>Bot token</span><input type="password" name="telegram_bot_token" autocomplete="off" placeholder="{% if health.configured.telegram_is_configured %}Configured, enter to replace{% else %}Not configured{% endif %}"></label>
-          <label><span>Chat ID</span><input name="telegram_chat_id" autocomplete="off" placeholder="{% if health.configured.telegram_is_configured %}Configured, enter to replace{% else %}Not configured{% endif %}"></label>
-        </div>
-        <button class="button" type="submit">Save credentials</button>
-      </form>
-
-      <h3 class="section-label">Seed accounts</h3>
-      <div class="account-list">
-        {% for account in accounts %}
-          <div class="account-row">
-            <strong class="{% if account.muted %}is-muted{% endif %}">@{{ account.handle }}</strong>
-            <form method="post" action="/settings/accounts/{{ account.handle }}/mute" hx-post="/settings/accounts/{{ account.handle }}/mute" hx-target="#settings-panel" hx-swap="outerHTML"><button class="text-button" type="submit">{% if account.muted %}Unmute{% else %}Mute{% endif %}</button></form>
-            <form method="post" action="/settings/accounts/{{ account.handle }}/remove" hx-post="/settings/accounts/{{ account.handle }}/remove" hx-target="#settings-panel" hx-swap="outerHTML"><button class="text-button" type="submit">Remove</button></form>
+      <section class="settings-section">
+        <h2 class="section-label">Twitter / X</h2>
+        <p class="muted-copy">X scrape uses the signed-in Chrome profile on this machine. Live Tailscale scrape does not read <code>auth_token</code> / <code>ct0</code>.</p>
+        <div class="health-grid">
+          <div>
+            <span>Chrome profile</span>
+            <strong>{% if chrome_profile_exists %}Present{% else %}Missing{% endif %}</strong>
+            <small>{{ chrome_profile }}{% if not chrome_profile_exists %} — sign in once in this profile, then rerun scrape{% endif %}</small>
           </div>
-        {% endfor %}
-      </div>
-      <form class="inline-form" method="post" action="/settings/accounts/add" hx-post="/settings/accounts/add" hx-target="#settings-panel" hx-swap="outerHTML">
-        <label><span>Handle</span><input name="handle" placeholder="@handle" required></label>
-        <button class="button button-muted" type="submit">Add account</button>
-      </form>
-
-      <h3 class="section-label">List-mode jobs</h3>
-      <div class="form-actions">
-        <button class="button button-muted" type="button" hx-post="/settings/run/fetch" hx-target="#settings-panel" hx-swap="outerHTML">Run fetch</button>
-        <button class="button button-muted" type="button" hx-post="/settings/run/weekly" hx-target="#settings-panel" hx-swap="outerHTML">Run weekly</button>
-      </div>
-
-      <h3 class="section-label">Picks prompt</h3>
-      <form method="post" action="/settings/prompt" hx-post="/settings/prompt" hx-target="#settings-panel" hx-swap="outerHTML">
-        <textarea name="prompt" rows="8">{{ prompt }}</textarea>
-        <div class="form-actions">
-          <button class="button" type="submit">Save prompt</button>
-          <button class="button button-muted" type="button" hx-post="/settings/prompt/reset" hx-target="#settings-panel" hx-swap="outerHTML"{% if not prompt_default_exists %} disabled{% endif %}>Reset default</button>
         </div>
-      </form>
-    </details>
+        <details class="advanced-block">
+          <summary>Advanced: list-mode cookies</summary>
+          <p class="muted-copy">Only the old list/fetch <code>xclient</code> path uses these. Leave blank unless you still run that pipeline.</p>
+          <div class="form-grid">
+            <label><span>auth_token</span><input type="password" name="x_auth_token" autocomplete="off" placeholder="{% if health.configured.x_is_configured %}Configured, enter to replace{% else %}Not configured{% endif %}"></label>
+            <label><span>ct0</span><input type="password" name="x_ct0" autocomplete="off" placeholder="{% if health.configured.x_is_configured %}Configured, enter to replace{% else %}Not configured{% endif %}"></label>
+          </div>
+        </details>
+      </section>
+
+      <div class="form-actions reading-actions">
+        <button class="button" type="submit">Save connections</button>
+      </div>
+    </form>
   {% endif %}
 </div>
