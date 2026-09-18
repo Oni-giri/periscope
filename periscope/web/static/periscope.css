@@ -1536,6 +1536,7 @@ input::placeholder {
   display: block;
   width: 100%;
   max-width: 680px;
+  margin: 0 0 18px;
   padding: 12px 14px;
   border: 1px solid var(--rule-2);
   background: var(--inset);

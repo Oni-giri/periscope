@@ -33,7 +33,9 @@
         <h2 class="section-label">Interests / topics</h2>
         <p class="muted-copy">One topic per line. The scrape curator reads these when present (fallback: ai, latvia, crypto, tools, science, business).</p>
         <textarea name="interests" rows="8" placeholder="ai&#10;latvia&#10;crypto&#10;tools&#10;science&#10;business">{{ interests_text }}</textarea>
-        <button class="button" type="submit">Save reading settings</button>
+        <div class="form-actions">
+          <button class="button" type="submit">Save reading settings</button>
+        </div>
       </section>
     </form>
 
@@ -100,7 +102,7 @@
     <section class="settings-section">
       <h2 class="section-label">Event log</h2>
       <div class="event-log">
-        {% for event in events %}<div><strong>{{ event.kind }}</strong><span>{{ event.at|absolute_time }}</span><code>{{ event.payload }}</code></div>{% else %}<p>No events recorded.</p>{% endfor %}
+        {% for event in events %}<div><strong>{{ event.kind }}</strong><span>{{ event.at|absolute_datetime }}</span><code>{{ event.payload }}</code></div>{% else %}<p>No events recorded.</p>{% endfor %}
       </div>
     </section>
 
