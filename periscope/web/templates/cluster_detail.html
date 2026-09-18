@@ -4,7 +4,7 @@
   <header class="page-header detail-header">
     <div class="tag inline-tag">{{ cluster.tag }}</div>
     <h1>{{ cluster.headline }}</h1>
-    <p class="lede">{{ cluster.synthesis }}</p>
+    <p class="lede">{{ cluster.synthesis|md_bold }}</p>
     <div class="metadata">
       <span>{{ cluster.tweets|length }} posts</span>
       <span>{{ cluster.digest_date|absolute_date }}</span>
@@ -16,7 +16,7 @@
       <article class="thread-post{% if tweet.thread_root_id != tweet.id %} is-reply{% endif %}">
         <header>
           {% if tweet.avatar %}
-          <img class="avatar" src="{{ tweet.avatar }}" alt="" width="24" height="24">
+          <img class="avatar" src="{{ tweet.avatar }}" alt="" width="24" height="24" data-initials="{{ tweet.author[:2]|upper }}" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'avatar',textContent:this.dataset.initials||'?'}))">
           {% else %}
           <span class="avatar">{{ tweet.author[:2]|upper }}</span>
           {% endif %}

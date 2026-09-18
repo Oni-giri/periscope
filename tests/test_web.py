@@ -55,7 +55,7 @@ def test_core_web_routes_and_htmx_keep(app_config, timeline_fixture) -> None:
         home = client.get("/")
         assert home.status_code == 200
         assert "Thursday, 16 July 2026" in home.text
-        assert "End of digest" in home.text
+        assert "Edition closed" in home.text
         assert home.headers["x-frame-options"] == "DENY"
 
         dated = client.get("/digest/2026-07-16")

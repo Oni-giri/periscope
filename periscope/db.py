@@ -72,13 +72,19 @@ def normalize_tweet(raw: Mapping[str, Any], *, fetched_at: str) -> dict[str, Any
     author = str(author_value).strip().removeprefix("@").lower() or "unknown"
     text = str(_first(raw, "text", "rawContent", "full_text", default="")).strip()
 
-    quoted = _first(raw, "quotedTweet", "quoted_tweet")
+    quoted = _first(raw, "quotedTweet", "quoted_tweet", "quote")
     quoted_data = quoted if isinstance(quoted, Mapping) else {}
     quoted_id_value = _first(raw, "quoted_id", "quotedTweetId", "quoted_tweet_id")
     quoted_id = str(quoted_id_value or _first(quoted_data, "id_str", "id", default="")) or None
 
     retweeted = _first(raw, "retweetedTweet", "retweeted_tweet")
-    reply_id = _first(raw, "inReplyToTweetIdStr", "inReplyToTweetId", "in_reply_to_status_id_str")
+    reply_id = _first(
+        raw,
+        "inReplyToTweetIdStr",
+        "inReplyToTweetId",
+        "in_reply_to_status_id_str",
+        "replying_to_status",
+    )
     if retweeted:
         kind = "rt"
     elif reply_id:
@@ -573,6 +579,30 @@ class Database:
             avatar = raw.get("avatar") or raw.get("author_avatar")
             if avatar:
                 result["avatar"] = str(avatar)
+            media = raw.get("media") or raw.get("image_urls") or []
+            if isinstance(media, list) and media:
+                result["media"] = [str(item) for item in media if item]
+            quoted = raw.get("quoted_tweet") or raw.get("quotedTweet") or raw.get("quote")
+            if isinstance(quoted, dict) and (quoted.get("text") or quoted.get("id")):
+                result["quoted"] = {
+                    "id": str(quoted.get("id") or quoted.get("id_str") or result.get("quoted_id") or ""),
+                    "author": str(
+                        quoted.get("author")
+                        or (quoted.get("user") or {}).get("screen_name")
+                        or (quoted.get("user") or {}).get("username")
+                        or ""
+                    ).removeprefix("@"),
+                    "text": str(quoted.get("text") or quoted.get("full_text") or ""),
+                }
+            tweet_url = None
+            for url in result.get("urls") or []:
+                if "/status/" in str(url):
+                    tweet_url = str(url)
+                    break
+            if not tweet_url and result.get("author") and result.get("id"):
+                tweet_url = f"https://x.com/{result['author']}/status/{result['id']}"
+            if tweet_url:
+                result["tweet_url"] = tweet_url
         return result
 
     def replace_digest(
@@ -1072,6 +1102,48 @@ class Database:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def list_follow_queue(
+        self,
+        *,
+        statuses: Sequence[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        wanted = tuple(statuses) if statuses else FOLLOW_QUEUE_STATUSES
+        invalid = [item for item in wanted if item not in FOLLOW_QUEUE_STATUSES]
+        if invalid:
+            raise ValueError(f"Invalid follow statuses: {', '.join(invalid)}")
+        placeholders = ",".join("?" for _ in wanted)
+        with self.connect() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT * FROM follow_queue
+                WHERE status IN ({placeholders})
+                ORDER BY
+                  CASE status
+                    WHEN 'pending' THEN 0
+                    WHEN 'failed' THEN 1
+                    ELSE 2
+                  END,
+                  added_at DESC,
+                  handle
+                """,
+                wanted,
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def dismiss_follow(self, handle: str) -> bool:
+        """Remove a follow proposition from the queue (no X call)."""
+
+        canonical = str(handle or "").strip().removeprefix("@").lower()
+        if not canonical:
+            return False
+        with self.connect() as connection:
+            cursor = connection.execute(
+                "DELETE FROM follow_queue WHERE handle = ?",
+                (canonical,),
+            )
+            connection.commit()
+        return cursor.rowcount > 0
+
     def mark_follow(
         self,
         handle: str,
@@ -1122,6 +1194,7 @@ class Database:
         *,
         account: str | None = None,
         kept_only: bool = False,
+        limit: int | None = None,
     ) -> list[dict[str, Any]]:
         with self.connect() as connection:
             latest = connection.execute(
@@ -1136,6 +1209,9 @@ class Database:
             if kept_only:
                 conditions.append("keeps.tweet_id IS NOT NULL")
             where = " AND ".join(conditions)
+            limit_sql = ""
+            if limit is not None and int(limit) > 0:
+                limit_sql = f" LIMIT {int(limit)}"
             rows = connection.execute(
                 f"""
                 SELECT
@@ -1150,6 +1226,7 @@ class Database:
                 LEFT JOIN keeps ON keeps.tweet_id = tweets.id
                 WHERE {where}
                 ORDER BY fetch_log.started_at DESC, tweets.created_at DESC, tweets.id
+                {limit_sql}
                 """,
                 tuple(parameters),
             ).fetchall()
@@ -1174,6 +1251,38 @@ class Database:
             tweet["kept"] = bool(tweet["kept"])
             batch["tweets"].append(tweet)
         return batches
+
+    def count_feed_posts(
+        self,
+        *,
+        account: str | None = None,
+        kept_only: bool = False,
+    ) -> int:
+        with self.connect() as connection:
+            latest = connection.execute(
+                "SELECT assembled_at FROM digests ORDER BY date DESC LIMIT 1"
+            ).fetchone()
+            boundary = str(latest["assembled_at"]) if latest else ""
+            conditions = ["fetch_log.started_at > ?"]
+            parameters: list[Any] = [boundary]
+            if account:
+                conditions.append("tweets.author = ?")
+                parameters.append(account.removeprefix("@").lower())
+            if kept_only:
+                conditions.append("keeps.tweet_id IS NOT NULL")
+            where = " AND ".join(conditions)
+            row = connection.execute(
+                f"""
+                SELECT COUNT(*) AS count
+                FROM fetch_log
+                JOIN tweet_fetches ON tweet_fetches.fetch_log_id = fetch_log.id
+                JOIN tweets ON tweets.id = tweet_fetches.tweet_id
+                LEFT JOIN keeps ON keeps.tweet_id = tweets.id
+                WHERE {where}
+                """,
+                tuple(parameters),
+            ).fetchone()
+        return int(row["count"]) if row else 0
 
     def archive_page(
         self,

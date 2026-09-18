@@ -71,7 +71,7 @@
           <div>
             <div class="result-author">
               {% if tweet.avatar %}
-                <img class="avatar" src="{{ tweet.avatar }}" alt="" width="24" height="24">
+                <img class="avatar" src="{{ tweet.avatar }}" alt="" width="24" height="24" data-initials="{{ tweet.author[:2]|upper }}" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'avatar',textContent:this.dataset.initials||'?'}))">
               {% endif %}
               <span>@{{ tweet.author }}</span>
               <time datetime="{{ tweet.created_at }}">{{ tweet.created_at|absolute_time }}</time>

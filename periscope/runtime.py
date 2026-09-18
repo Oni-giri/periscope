@@ -123,6 +123,59 @@ def save_schedule_settings(
     )
 
 
+ARCHIVE_DEFAULT_FILTERS = ("has_action", "kept", "all")
+FEED_MAX_POSTS_DEFAULT = 50
+FEED_MAX_POSTS_MIN = 20
+FEED_MAX_POSTS_MAX = 200
+
+
+def clamp_feed_max_posts(value: int | str) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeSettingsError("Feed max posts must be an integer") from exc
+    return max(FEED_MAX_POSTS_MIN, min(FEED_MAX_POSTS_MAX, parsed))
+
+
+def save_ui_settings(
+    database: Database,
+    *,
+    feed_max_posts: int | str,
+    archive_default_filter: str,
+) -> None:
+    """Persist reading-surface knobs (feed cap + archive landing filter)."""
+
+    feed_max = clamp_feed_max_posts(feed_max_posts)
+    archive_filter = str(archive_default_filter or "").strip().lower()
+    if archive_filter not in ARCHIVE_DEFAULT_FILTERS:
+        raise RuntimeSettingsError(
+            "Archive default filter must be has_action, kept, or all"
+        )
+    database.update_settings(
+        {
+            "ui.feed_max_posts": str(feed_max),
+            "ui.archive_default_filter": archive_filter,
+        }
+    )
+
+
+def ui_settings(database: Database) -> dict[str, str | int]:
+    values = database.get_settings()
+    try:
+        feed_max = clamp_feed_max_posts(
+            values.get("ui.feed_max_posts", FEED_MAX_POSTS_DEFAULT)
+        )
+    except RuntimeSettingsError:
+        feed_max = FEED_MAX_POSTS_DEFAULT
+    archive_filter = values.get("ui.archive_default_filter", "has_action")
+    if archive_filter not in ARCHIVE_DEFAULT_FILTERS:
+        archive_filter = "has_action"
+    return {
+        "feed_max_posts": feed_max,
+        "archive_default_filter": archive_filter,
+    }
+
+
 def secrets_path(config: AppConfig) -> Path:
     configured = os.environ.get("PERISCOPE_SECRETS")
     return Path(configured).expanduser() if configured else config.data_dir / "secrets.env"

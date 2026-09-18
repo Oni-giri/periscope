@@ -16,7 +16,7 @@
             {% for para in edition_highlights.split('\n\n') %}
               {% set para = para.strip() %}
               {% if para %}
-                <p class="edition-highlights-p">{{ para }}</p>
+                <p class="edition-highlights-p">{{ para|md_bold }}</p>
               {% endif %}
             {% endfor %}
           </div>
@@ -92,7 +92,7 @@
               <strong class="nugget-author">@{{ pick.tweet.author }}</strong>
             </div>
           </div>
-          <span class="nugget-why">{{ why }}</span>
+          <span class="nugget-why">{{ why|md_bold }}</span>
           {% set actions = pick.actions or [] %}
           {% set tweet_id = pick.tweet.id %}
           {% set handle = pick.tweet.author %}
@@ -195,11 +195,11 @@
             <blockquote>{{ pick.tweet.text }}</blockquote>
             {% if commentary %}
               {% if reason and not reason_dup %}
-                <div class="pick-reason">{{ reason }}</div>
+                <div class="pick-reason">{{ reason|md_bold }}</div>
               {% endif %}
-              <p class="pick-commentary">{{ commentary }}</p>
+              <p class="pick-commentary">{{ commentary|md_bold }}</p>
             {% elif reason %}
-              <div class="pick-reason">{{ reason }}</div>
+              <div class="pick-reason">{{ reason|md_bold }}</div>
             {% endif %}
             {% if pick.tweet.media %}
               <figure class="pick-media{% if pick.tweet.media|length > 1 %} pick-media-gallery{% endif %}">
@@ -219,9 +219,16 @@
     {% endfor %}
   </section>
 
-  <footer class="page-footer">
-    <span>End of digest</span>
-    <a href="{{ url_for('archive') }}">Search the archive</a>
+  <footer class="page-footer edition-closed">
+    <div class="edition-closed-copy">
+      <strong>Edition closed</strong>
+      <span>This cut is finite on purpose — stop when you hit this line.</span>
+    </div>
+    {% if leftover_cta_count %}
+      <a class="button" href="{{ url_for('feed') }}">{{ leftover_cta_count }} leftover{% if leftover_cta_count != 1 %}s{% endif %} worth a glance</a>
+    {% else %}
+      <a href="{{ url_for('archive') }}">Search the archive</a>
+    {% endif %}
   </footer>
 
   <script>

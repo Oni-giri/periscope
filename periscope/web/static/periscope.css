@@ -2059,3 +2059,27 @@ input::placeholder {
 .topic-filters a.topic-chip {
   text-decoration: none;
 }
+
+.edition-closed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 2.5rem;
+  padding: 1.25rem 0 0;
+  border-top: 1px solid var(--border, #ddd);
+}
+.edition-closed-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  max-width: 36rem;
+}
+.edition-closed-copy strong {
+  font-size: 1.05rem;
+}
+.edition-closed-copy span {
+  color: var(--muted, #666);
+  font-size: 0.95rem;
+}

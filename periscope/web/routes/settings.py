@@ -17,6 +17,8 @@ from periscope.runtime import (
     reset_picks_prompt,
     save_picks_prompt,
     save_schedule_settings,
+    save_ui_settings,
+    ui_settings,
     update_secrets_file,
 )
 from periscope.scheduler import configure_scheduler, scheduled_jobs
@@ -24,7 +26,22 @@ from periscope.telegram.bot import build_notifier
 from periscope.web.context import base_context, database_for
 
 router = APIRouter()
-_TABS = {"credentials", "curation", "schedule", "system"}
+_TABS = {"reading", "schedule", "system", "legacy"}
+
+
+def _parse_interest_names(raw: str) -> list[str]:
+    names: list[str] = []
+    seen: set[str] = set()
+    for part in raw.replace(",", "\n").splitlines():
+        name = part.strip()
+        if not name:
+            continue
+        key = name.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        names.append(name)
+    return names
 
 
 def _context(
@@ -35,27 +52,33 @@ def _context(
     error: str | None = None,
 ) -> dict[str, Any]:
     if tab not in _TABS:
-        tab = "credentials"
+        tab = "reading"
     database = database_for(request)
     config = effective_config(request.app.state.config, database)
     prompt, prompt_default_exists = read_picks_prompt(config)
+    reading = ui_settings(database)
+    topics = database.list_topics()
+    pending_follows = len(database.list_pending_follows())
     return {
         **base_context(request, page="settings", title="Settings"),
         "tab": tab,
         "tabs": (
-            ("credentials", "Credentials"),
-            ("curation", "Curation"),
-            ("schedule", "Schedule and behavior"),
-            ("system", "System health"),
+            ("reading", "Reading"),
+            ("schedule", "Schedule"),
+            ("system", "System"),
+            ("legacy", "Legacy"),
         ),
         "message": message,
         "error": error,
         "accounts": database.list_accounts(include_muted=True),
-        "topics": database.list_topics(),
+        "topics": topics,
+        "interests_text": "\n".join(str(item["name"]) for item in topics),
         "prompt": prompt,
         "prompt_default_exists": prompt_default_exists,
         "runtime_config": config,
         "settings": database.get_settings(),
+        "ui": reading,
+        "pending_follows": pending_follows,
         "events": database.recent_events(limit=30),
         "spend": database.spend_summary(),
         "jobs": scheduled_jobs(getattr(request.app.state, "scheduler", None)),
@@ -78,8 +101,38 @@ def _response(
 
 
 @router.get("/settings", response_class=HTMLResponse, name="settings")
-async def settings(request: Request, tab: str = "credentials") -> HTMLResponse:
+async def settings(request: Request, tab: str = "reading") -> HTMLResponse:
     return _response(request, tab=tab)
+
+
+@router.post("/settings/reading", response_class=HTMLResponse)
+async def save_reading(request: Request) -> HTMLResponse:
+    form = await request.form()
+    database = database_for(request)
+    try:
+        save_ui_settings(
+            database,
+            feed_max_posts=str(form.get("feed_max_posts", "50")),
+            archive_default_filter=str(form.get("archive_default_filter", "has_action")),
+        )
+        names = _parse_interest_names(str(form.get("interests", "")))
+        existing = {
+            str(item["name"]).lower(): item for item in database.list_topics()
+        }
+        topics = []
+        for name in names:
+            prior = existing.get(name.lower())
+            topics.append(
+                {
+                    "name": name,
+                    "min_faves": int(prior["min_faves"]) if prior else 0,
+                    "decay_weight": float(prior["decay_weight"]) if prior else 1.0,
+                }
+            )
+        database.replace_topics(topics)
+    except (ValueError, RuntimeSettingsError) as exc:
+        return _response(request, tab="reading", error=str(exc))
+    return _response(request, tab="reading", message="Reading settings saved.")
 
 
 @router.post("/settings/credentials", response_class=HTMLResponse)
@@ -104,10 +157,10 @@ async def save_credentials(request: Request) -> HTMLResponse:
         except Exception as exc:
             database_for(request).record_event("telegram_polling_failed", {"message": str(exc)})
     except (OSError, RuntimeSettingsError) as exc:
-        return _response(request, tab="credentials", error=str(exc))
+        return _response(request, tab="legacy", error=str(exc))
     return _response(
         request,
-        tab="credentials",
+        tab="legacy",
         message="Credentials saved locally. Blank fields kept their previous values.",
     )
 
@@ -149,13 +202,13 @@ async def test_service(request: Request, service: str) -> HTMLResponse:
         )
         return _response(
             request,
-            tab="credentials",
+            tab="legacy",
             error=f"{service.title()} test failed: {exc}",
         )
     database.record_event("credential_test_succeeded", {"service": service})
     return _response(
         request,
-        tab="credentials",
+        tab="legacy",
         message=f"{service.title()} connection verified.",
     )
 
@@ -167,10 +220,10 @@ async def add_account(request: Request) -> HTMLResponse:
         handle = normalize_handle(str(form.get("handle", "")))
         added = database_for(request).add_account(handle)
     except ValueError as exc:
-        return _response(request, tab="curation", error=str(exc))
+        return _response(request, tab="legacy", error=str(exc))
     return _response(
         request,
-        tab="curation",
+        tab="legacy",
         message=f"@{handle} added." if added else f"@{handle} is already curated.",
     )
 
@@ -185,14 +238,14 @@ async def mute_account(request: Request, handle: str) -> HTMLResponse:
     if account is None:
         raise HTTPException(status_code=404, detail="Account not found")
     database.set_account_muted(handle, not bool(account["muted"]))
-    return _response(request, tab="curation", message=f"@{handle} updated.")
+    return _response(request, tab="legacy", message=f"@{handle} updated.")
 
 
 @router.post("/settings/accounts/{handle}/remove", response_class=HTMLResponse)
 async def remove_account(request: Request, handle: str) -> HTMLResponse:
     if not database_for(request).remove_account(handle):
         raise HTTPException(status_code=404, detail="Account not found")
-    return _response(request, tab="curation", message=f"@{handle} removed locally.")
+    return _response(request, tab="legacy", message=f"@{handle} removed locally.")
 
 
 @router.post("/settings/topics", response_class=HTMLResponse)
@@ -213,8 +266,8 @@ async def save_topics(request: Request) -> HTMLResponse:
                 )
         database_for(request).replace_topics(topics)
     except ValueError as exc:
-        return _response(request, tab="curation", error=f"Invalid topic value: {exc}")
-    return _response(request, tab="curation", message="Topics saved.")
+        return _response(request, tab="reading", error=f"Invalid topic value: {exc}")
+    return _response(request, tab="reading", message="Topics saved.")
 
 
 @router.post("/settings/prompt", response_class=HTMLResponse)
@@ -227,8 +280,8 @@ async def save_prompt(request: Request) -> HTMLResponse:
             str(form.get("prompt", "")),
         )
     except (OSError, RuntimeSettingsError) as exc:
-        return _response(request, tab="curation", error=str(exc))
-    return _response(request, tab="curation", message="Picks prompt saved as a new version.")
+        return _response(request, tab="legacy", error=str(exc))
+    return _response(request, tab="legacy", message="Picks prompt saved as a new version.")
 
 
 @router.post("/settings/prompt/reset", response_class=HTMLResponse)
@@ -236,10 +289,10 @@ async def reset_prompt(request: Request) -> HTMLResponse:
     try:
         reset_picks_prompt(request.app.state.config, database_for(request))
     except (OSError, RuntimeSettingsError) as exc:
-        return _response(request, tab="curation", error=str(exc))
+        return _response(request, tab="legacy", error=str(exc))
     return _response(
         request,
-        tab="curation",
+        tab="legacy",
         message="Picks prompt reset to the installed default.",
     )
 
@@ -277,4 +330,4 @@ async def run_job(request: Request, job: str) -> HTMLResponse:
     database_for(request).record_event("job_requested", {"job": job, "launched": launched})
     label = "Digest rebuild" if job == "rebuild" else job.title()
     message = f"{label} queued." if launched else f"{label} is already running."
-    return _response(request, tab="system", message=message)
+    return _response(request, tab="legacy", message=message)

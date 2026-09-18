@@ -46,6 +46,28 @@ EXTRACT_JS = r"""
     const blob = (a.innerText || '').toLowerCase();
     const is_ad = /\b(ad|promoted|promoted by)\b/.test(blob) || !!a.querySelector('[data-testid="placementTracking"]');
     const is_truncated = /\bshow more\b/i.test(a.innerText || '') || text.endsWith('…') || text.endsWith('...');
+    // Quoted post: another /status/ link that is not the main tweet, plus nested tweetText if present.
+    let quoted_id = null;
+    let quoted_tweet = null;
+    const otherStatus = links
+      .map(h => h.match(/\/([^\/]+)\/status\/(\d+)/))
+      .filter(mm => mm && mm[2] !== status_id);
+    if (otherStatus.length) {
+      quoted_id = otherStatus[0][2];
+      const qHandle = otherStatus[0][1];
+      const textNodes = [...a.querySelectorAll('[data-testid="tweetText"]')];
+      const qText = textNodes.length > 1 ? textNodes[1].innerText : '';
+      quoted_tweet = { id: quoted_id, author: qHandle, text: qText };
+    }
+    // Reply: look for socialContext / reply aria, or "Replying to" copy.
+    let replying_to_status = null;
+    const replyBlob = a.innerText || '';
+    if (/replying to/i.test(replyBlob) && otherStatus.length && !quoted_tweet?.text) {
+      // Prefer treating nested status as reply parent when not clearly a quote card.
+      replying_to_status = otherStatus[0][2];
+      quoted_id = null;
+      quoted_tweet = null;
+    }
     out.push({
       status_id,
       author_name,
@@ -57,6 +79,9 @@ EXTRACT_JS = r"""
       image_urls: [...new Set(imgs)],
       is_ad,
       is_truncated,
+      quoted_id,
+      quoted_tweet,
+      replying_to_status,
     });
   }
   return out;

@@ -19,7 +19,13 @@ from periscope.db import Database
 from periscope.mcp_server import build_mcp_server
 from periscope.scheduler import JobRunner, configure_scheduler
 from periscope.telegram.bot import TelegramPolling
-from periscope.web.context import absolute_date, absolute_datetime, absolute_time, date_heading
+from periscope.web.context import (
+    absolute_date,
+    absolute_datetime,
+    absolute_time,
+    date_heading,
+    md_bold,
+)
 from periscope.web.routes import (
     archive,
     cluster_detail,
@@ -28,6 +34,7 @@ from periscope.web.routes import (
     follow_queue,
     health,
     ideas,
+    inbox,
     settings,
     today,
     weekly,
@@ -108,6 +115,7 @@ def create_app(
     templates.env.filters["absolute_datetime"] = absolute_datetime
     templates.env.filters["absolute_time"] = absolute_time
     templates.env.filters["date_heading"] = date_heading
+    templates.env.filters["md_bold"] = md_bold
     templates.env.filters["follow_handle"] = follow_queue.follow_handle_filter
     app.state.config = config
     app.state.secrets = secrets
@@ -141,6 +149,7 @@ def create_app(
     app.include_router(archive.router)
     app.include_router(cluster_detail.router)
     app.include_router(discovery.router)
+    app.include_router(inbox.router)
     app.include_router(ideas.router)
     app.include_router(follow_queue.router)
     app.include_router(weekly.router)

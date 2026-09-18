@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 import argparse
+import time
 import json
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+import httpx
+
 from periscope.config import load_config
 from periscope.db import Database, isoformat
+from periscope.x_scrape.hydrate_shortlist import hydrate_one
 
 SCRAPE_NAMES = ("foryou.json", "following.json")
 
@@ -122,6 +126,8 @@ def scrape_post_to_payload(post: dict[str, Any]) -> dict[str, Any]:
     if tweet_url:
         urls.append(str(tweet_url))
     media = [str(url) for url in (post.get("image_urls") or post.get("media") or []) if url]
+    reply_to = post.get("replying_to_status") or post.get("in_reply_to_status_id_str")
+    kind = "reply" if reply_to else "tweet"
     payload: dict[str, Any] = {
         "id": str(post.get("status_id") or post.get("id") or ""),
         "author": str(post.get("author_handle") or post.get("author") or "unknown").removeprefix(
@@ -130,7 +136,7 @@ def scrape_post_to_payload(post: dict[str, Any]) -> dict[str, Any]:
         "created_at": post.get("created_at") or isoformat(),
         "text": post.get("text") or "",
         "urls": urls,
-        "kind": "tweet",
+        "kind": kind,
     }
     if media:
         payload["media"] = media
@@ -140,7 +146,75 @@ def scrape_post_to_payload(post: dict[str, Any]) -> dict[str, Any]:
     avatar = post.get("author_avatar") or post.get("avatar")
     if avatar:
         payload["avatar"] = str(avatar)
+    quoted = post.get("quoted_tweet") or post.get("quote")
+    if isinstance(quoted, dict):
+        payload["quoted_tweet"] = quoted
+        qid = str(quoted.get("id") or post.get("quoted_id") or "")
+        if qid:
+            payload["quoted_id"] = qid
+    elif post.get("quoted_id"):
+        payload["quoted_id"] = str(post["quoted_id"])
+    if reply_to:
+        payload["in_reply_to_status_id_str"] = str(reply_to)
+        payload["replying_to_status"] = str(reply_to)
+        payload["thread_root_id"] = str(post.get("thread_root_id") or reply_to)
     return payload
+
+
+def apply_hydrate(post: dict[str, Any], got: dict[str, Any]) -> None:
+    """Merge FxTwitter hydrate fields into a scrape dump post in place."""
+
+    if got.get("text"):
+        post["text"] = got["text"]
+        post["is_truncated"] = False
+    if got.get("image_urls"):
+        post["image_urls"] = list(
+            dict.fromkeys([*(post.get("image_urls") or []), *got["image_urls"]])
+        )
+    if got.get("author_avatar") and not post.get("author_avatar"):
+        post["author_avatar"] = got["author_avatar"]
+    if got.get("quoted_tweet"):
+        post["quoted_tweet"] = got["quoted_tweet"]
+    if got.get("quoted_id"):
+        post["quoted_id"] = got["quoted_id"]
+    if got.get("replying_to_status"):
+        post["replying_to_status"] = got["replying_to_status"]
+        post["in_reply_to_status_id_str"] = got["replying_to_status"]
+        post["thread_root_id"] = got.get("thread_root_id") or got["replying_to_status"]
+
+
+def hydrate_overflow_posts(
+    posts: list[dict[str, Any]],
+    *,
+    all_posts: bool = False,
+    sleep_s: float = 0.2,
+) -> int:
+    """Hydrate truncated leftovers (or all) via FxTwitter. Returns expanded count."""
+
+    todo = [
+        post
+        for post in posts
+        if post.get("status_id")
+        and (all_posts or post.get("is_truncated"))
+    ]
+    if not todo:
+        return 0
+    expanded = 0
+    with httpx.Client(headers={"User-Agent": "Periscope/0.1"}) as client:
+        for post in todo:
+            sid = str(post["status_id"])
+            try:
+                got = hydrate_one(client, sid)
+            except Exception:
+                time.sleep(sleep_s)
+                continue
+            if not got:
+                time.sleep(sleep_s)
+                continue
+            apply_hydrate(post, got)
+            expanded += 1
+            time.sleep(sleep_s)
+    return expanded
 
 
 def ingest_overflow(
@@ -150,8 +224,15 @@ def ingest_overflow(
     digest_path: Path | None = None,
     digest_document: dict[str, Any] | None = None,
     now: datetime | None = None,
+    hydrate: bool = True,
+    hydrate_all: bool = False,
 ) -> OverflowResult:
-    """Persist leftover scrape posts as one fetch after the latest digest."""
+    """Persist leftover scrape posts as one fetch after the latest digest.
+
+    When ``hydrate`` is true (default), truncated leftovers are expanded via
+    FxTwitter so Feed gets full text, media, quotes, and reply links.
+    Pass ``hydrate_all=True`` to hydrate every leftover (slower, richer quotes).
+    """
 
     document = digest_document if digest_document is not None else load_digest_document(digest_path)
     exclude = digest_keeper_ids(document)
@@ -184,6 +265,10 @@ def ingest_overflow(
             note="no leftovers",
         )
 
+    hydrated = 0
+    if hydrate:
+        hydrated = hydrate_overflow_posts(leftovers, all_posts=hydrate_all)
+
     stamp = overflow_fetch_now(assembled_at, now)
     fetch_id = database.start_fetch("scrape", now=stamp)
     new_items = 0
@@ -194,12 +279,14 @@ def ingest_overflow(
         if database.store_tweet(payload, fetch_id=fetch_id, fetched_at=stamp):
             new_items += 1
     database.finish_fetch(fetch_id, new_items=new_items, now=stamp)
+    note = f"hydrated={hydrated}" if hydrate else None
     return OverflowResult(
         fetch_id=fetch_id,
         leftover_count=len(leftovers),
         skipped_ads=skipped_ads,
         skipped_digest=skipped_digest,
         new_items=new_items,
+        note=note,
     )
 
 
@@ -209,6 +296,17 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--config", type=Path)
     parser.add_argument("--data-dir", type=Path)
     parser.add_argument("--digest", type=Path)
+    parser.add_argument(
+        "--hydrate",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Expand truncated leftovers via FxTwitter (default: on)",
+    )
+    parser.add_argument(
+        "--hydrate-all",
+        action="store_true",
+        help="Hydrate every leftover for quotes/replies (slower)",
+    )
     return parser
 
 
@@ -217,7 +315,13 @@ def main() -> None:
     config = load_config(args.config, data_dir=args.data_dir)
     database = Database(config.db_path)
     database.initialize()
-    result = ingest_overflow(database, dumps_dir=args.out_dir, digest_path=args.digest)
+    result = ingest_overflow(
+        database,
+        dumps_dir=args.out_dir,
+        digest_path=args.digest,
+        hydrate=args.hydrate,
+        hydrate_all=args.hydrate_all,
+    )
     print(json.dumps(asdict(result), sort_keys=True))
 
 

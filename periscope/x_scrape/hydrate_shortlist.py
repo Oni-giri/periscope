@@ -20,15 +20,49 @@ def hydrate_one(client: httpx.Client, status_id: str) -> dict | None:
     text = tweet.get("text") or ""
     if not text:
         return None
-    media = []
-    photos = (tweet.get("media") or {}).get("photos") or []
+    media: list[str] = []
+    media_block = tweet.get("media") or {}
+    photos = media_block.get("photos") or []
     for photo in photos:
         url = photo.get("url") or photo.get("original_url")
         if url:
             media.append(url)
+    for item in media_block.get("all") or []:
+        if not isinstance(item, dict):
+            continue
+        url = item.get("url") or item.get("original_url")
+        if url and url not in media:
+            media.append(url)
     author = tweet.get("author") or {}
     avatar = author.get("avatar_url") or author.get("avatar") or None
-    return {"text": text, "image_urls": media, "author_avatar": avatar}
+    out: dict = {"text": text, "image_urls": media, "author_avatar": avatar}
+    quote = tweet.get("quote")
+    if isinstance(quote, dict) and (quote.get("text") or quote.get("id")):
+        q_author = quote.get("author") or {}
+        if isinstance(q_author, dict):
+            q_handle = q_author.get("screen_name") or q_author.get("name") or ""
+        else:
+            q_handle = str(q_author or "")
+        out["quoted_id"] = str(quote.get("id") or "")
+        out["quoted_tweet"] = {
+            "id": str(quote.get("id") or ""),
+            "author": str(q_handle).removeprefix("@"),
+            "text": str(quote.get("text") or ""),
+        }
+        q_media = []
+        q_block = quote.get("media") or {}
+        for photo in q_block.get("photos") or []:
+            url = photo.get("url") or photo.get("original_url")
+            if url:
+                q_media.append(url)
+        if q_media:
+            out["quoted_tweet"]["media"] = q_media
+    reply_to = tweet.get("replying_to_status")
+    if reply_to:
+        out["replying_to_status"] = str(reply_to)
+        out["in_reply_to_status_id_str"] = str(reply_to)
+        out["thread_root_id"] = str(reply_to)
+    return out
 
 
 def main() -> int:

@@ -7,6 +7,7 @@ from datetime import date
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
+from periscope.runtime import ui_settings
 from periscope.web.context import base_context, database_for
 
 router = APIRouter()
@@ -157,6 +158,12 @@ def _digest_response(request: Request, digest_date: str | None = None) -> HTMLRe
     context["edition_highlights"] = edition_highlights_for(rendered)
     context["queued_handles"] = database.queued_follow_handles()
     context["follow_source"] = "today"
+    reading = ui_settings(database)
+    leftover_total = database.count_feed_posts()
+    feed_max = int(reading["feed_max_posts"])
+    context["leftover_count"] = leftover_total
+    context["leftover_cta_count"] = min(leftover_total, feed_max) if leftover_total else 0
+    context["feed_max_posts"] = feed_max
     dates = database.list_digest_dates()
     context["digest_dates"] = dates
     context["previous_date"] = None

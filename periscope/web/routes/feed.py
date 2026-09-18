@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from periscope.runtime import ui_settings
 from periscope.web.context import base_context, database_for
 
 router = APIRouter()
@@ -17,13 +18,26 @@ async def feed(
     kept: bool = Query(False),
 ) -> HTMLResponse:
     database = database_for(request)
+    reading = ui_settings(database)
+    feed_max = int(reading["feed_max_posts"])
+    account_value = (account or "").strip().removeprefix("@").lower() or None
+    total = database.count_feed_posts(account=account_value, kept_only=kept)
+    batches = database.feed_batches(
+        account=account_value,
+        kept_only=kept,
+        limit=feed_max,
+    )
+    shown = sum(len(batch["tweets"]) for batch in batches)
     context = base_context(request, page="feed", title="Feed")
     context.update(
         {
-            "batches": database.feed_batches(account=account, kept_only=kept),
-            "facets": database.archive_facets(),
-            "selected_account": account or "",
+            "batches": batches,
+            "selected_account": account_value or "",
             "kept_only": kept,
+            "feed_max_posts": feed_max,
+            "feed_total": total,
+            "feed_shown": shown,
+            "feed_capped": total > shown,
         }
     )
     return request.app.state.templates.TemplateResponse(

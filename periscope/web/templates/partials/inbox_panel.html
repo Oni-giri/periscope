@@ -1,0 +1,52 @@
+<div id="inbox-panel">
+  {% if action_error %}<p class="form-error" role="alert">{{ action_error }}</p>{% endif %}
+
+  <section class="settings-section" aria-label="Follow propositions">
+    <h2 class="section-label">Follow queue</h2>
+    {% if pending_follows %}
+      <div class="account-list">
+        {% for item in pending_follows %}
+          <div class="account-row">
+            <div>
+              <strong>@{{ item.handle }}</strong>
+              <span class="muted-copy">pending{% if item.source %} · {{ item.source }}{% endif %}{% if item.added_at %} · {{ item.added_at|absolute_time }}{% endif %}</span>
+            </div>
+            <form method="post" action="{{ url_for('dismiss_follow', handle=item.handle) }}" hx-post="{{ url_for('dismiss_follow', handle=item.handle) }}" hx-target="#inbox-panel" hx-swap="outerHTML">
+              <button class="text-button" type="submit">Dismiss</button>
+            </form>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <section class="empty-state compact">
+        <span class="empty-kicker">Quiet queue</span>
+        <h2>No follow propositions</h2>
+        <p>Follow chips on Today queue accounts here.</p>
+      </section>
+    {% endif %}
+
+    {% if done_follows %}
+      <h3 class="section-label">Recently handled</h3>
+      <div class="account-list">
+        {% for item in done_follows[:20] %}
+          <div class="account-row">
+            <div>
+              <strong class="is-muted">@{{ item.handle }}</strong>
+              <span class="muted-copy">{{ item.status }}{% if item.last_error %} · {{ item.last_error }}{% endif %}</span>
+            </div>
+            <form method="post" action="{{ url_for('dismiss_follow', handle=item.handle) }}" hx-post="{{ url_for('dismiss_follow', handle=item.handle) }}" hx-target="#inbox-panel" hx-swap="outerHTML">
+              <button class="text-button" type="submit">Remove</button>
+            </form>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </section>
+
+  {% if candidates %}
+    <section class="settings-section" aria-label="Discovery candidates">
+      <h2 class="section-label">Discovery candidates</h2>
+      {% include "partials/discovery_queue.html" %}
+    </section>
+  {% endif %}
+</div>

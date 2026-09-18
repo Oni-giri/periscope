@@ -45,6 +45,7 @@ For each pick return 0-3 actions with type in: try, read, watch, steal, follow.
 Also set nugget=true when the post is primarily an idea/technique/contrarian take/reusable pattern
 (not breaking news). Set actionable=true when there is a concrete next step.
 nugget_why is a short paragraph (up to ~800 chars) on why it matters for building.
+You MAY use **bold** sparingly in why/commentary text to emphasize important names, numbers, and key points for ADHD readability. Never invent other markup.
 
 Return JSON only:
 {"picks":[{"tweet_id":"...","actions":[{"type":"try","label":"...","url":"","detail":""}],

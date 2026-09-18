@@ -8,87 +8,43 @@
   {% if message %}<p class="form-success" role="status">{{ message }}</p>{% endif %}
   {% if error %}<p class="form-error" role="alert">{{ error }}</p>{% endif %}
 
-  {% if tab == "credentials" %}
-    <form class="settings-form" method="post" action="/settings/credentials" hx-post="/settings/credentials" hx-target="#settings-panel" hx-swap="outerHTML">
+  {% if tab == "reading" %}
+    <form class="settings-form" method="post" action="/settings/reading" hx-post="/settings/reading" hx-target="#settings-panel" hx-swap="outerHTML">
       <section class="settings-section">
-        <h2 class="section-label">X session</h2>
-        <p class="muted-copy">Cookies never leave this machine. Blank fields preserve the current value.</p>
+        <h2 class="section-label">Feed and Archive</h2>
+        <p class="muted-copy">Hard-cap leftovers and choose how Archive opens. Tweaking here beats editing code.</p>
         <div class="form-grid">
-          <label><span>auth_token</span><input type="password" name="x_auth_token" autocomplete="off" placeholder="{% if health.configured.x_is_configured %}Configured, enter to replace{% else %}Not configured{% endif %}"></label>
-          <label><span>ct0</span><input type="password" name="x_ct0" autocomplete="off" placeholder="{% if health.configured.x_is_configured %}Configured, enter to replace{% else %}Not configured{% endif %}"></label>
+          <label>
+            <span>Feed max posts</span>
+            <input type="number" name="feed_max_posts" min="20" max="200" value="{{ ui.feed_max_posts }}" required>
+          </label>
+          <label>
+            <span>Archive default filter</span>
+            <select name="archive_default_filter">
+              <option value="has_action"{% if ui.archive_default_filter == "has_action" %} selected{% endif %}>Has action</option>
+              <option value="kept"{% if ui.archive_default_filter == "kept" %} selected{% endif %}>Kept</option>
+              <option value="all"{% if ui.archive_default_filter == "all" %} selected{% endif %}>All</option>
+            </select>
+          </label>
         </div>
-        <button class="button button-muted" type="button" hx-post="/settings/test/x" hx-target="#settings-panel" hx-swap="outerHTML">Test X</button>
       </section>
 
       <section class="settings-section">
-        <h2 class="section-label">Anthropic</h2>
-        <div class="form-grid">
-          <label><span>API key</span><input type="password" name="anthropic_api_key" autocomplete="off" placeholder="{% if health.configured.anthropic_is_configured %}Configured, enter to replace{% else %}Not configured{% endif %}"></label>
-          <label><span>Cheap model</span><input value="{{ runtime_config.models.cheap }}" disabled></label>
-          <label><span>Quality model</span><input value="{{ runtime_config.models.quality }}" disabled></label>
-        </div>
-        <button class="button button-muted" type="button" hx-post="/settings/test/anthropic" hx-target="#settings-panel" hx-swap="outerHTML">Test Anthropic</button>
+        <h2 class="section-label">Interests / topics</h2>
+        <p class="muted-copy">One topic per line. The scrape curator reads these when present (fallback: ai, latvia, crypto, tools, science, business).</p>
+        <textarea name="interests" rows="8" placeholder="ai&#10;latvia&#10;crypto&#10;tools&#10;science&#10;business">{{ interests_text }}</textarea>
+        <button class="button" type="submit">Save reading settings</button>
       </section>
-
-      <section class="settings-section">
-        <h2 class="section-label">Telegram delivery</h2>
-        <div class="form-grid">
-          <label><span>Bot token</span><input type="password" name="telegram_bot_token" autocomplete="off" placeholder="{% if health.configured.telegram_is_configured %}Configured, enter to replace{% else %}Not configured{% endif %}"></label>
-          <label><span>Chat ID</span><input name="telegram_chat_id" autocomplete="off" placeholder="{% if health.configured.telegram_is_configured %}Configured, enter to replace{% else %}Not configured{% endif %}"></label>
-        </div>
-        <button class="button button-muted" type="button" hx-post="/settings/test/telegram" hx-target="#settings-panel" hx-swap="outerHTML">Send test message</button>
-      </section>
-      <button class="button" type="submit">Save credentials</button>
     </form>
 
-  {% elif tab == "curation" %}
     <section class="settings-section">
-      <h2 class="section-label">Curated list</h2>
-      <p class="muted-copy">{{ accounts|length }} local accounts. Muted accounts remain archived.</p>
-      <div class="account-list">
-        {% for account in accounts %}
-          <div class="account-row">
-            <strong class="{% if account.muted %}is-muted{% endif %}">@{{ account.handle }}</strong>
-            <form method="post" action="/settings/accounts/{{ account.handle }}/mute" hx-post="/settings/accounts/{{ account.handle }}/mute" hx-target="#settings-panel" hx-swap="outerHTML"><button class="text-button" type="submit">{% if account.muted %}Unmute{% else %}Mute{% endif %}</button></form>
-            <form method="post" action="/settings/accounts/{{ account.handle }}/remove" hx-post="/settings/accounts/{{ account.handle }}/remove" hx-target="#settings-panel" hx-swap="outerHTML"><button class="text-button" type="submit" aria-label="Remove @{{ account.handle }}">Remove</button></form>
-          </div>
-        {% endfor %}
+      <h2 class="section-label">Status</h2>
+      <div class="health-grid">
+        <div><span>Last fetch</span><strong>{% if health.last_fetch %}{{ health.last_fetch.started_at|absolute_time }}{% else %}Never{% endif %}</strong></div>
+        <div><span>Follow queue pending</span><strong>{{ pending_follows }}</strong></div>
+        <div><span>Digests</span><strong>{{ health.database.digests if health.database is defined else "—" }}</strong></div>
+        <div><span>Cookie</span><strong>{% if health.cookie.ok %}OK{% else %}Needs attention{% endif %}</strong></div>
       </div>
-      <form class="inline-form" method="post" action="/settings/accounts/add" hx-post="/settings/accounts/add" hx-target="#settings-panel" hx-swap="outerHTML">
-        <label><span>Handle</span><input name="handle" placeholder="@handle" required></label>
-        <button class="button button-muted" type="submit">Add account</button>
-      </form>
-    </section>
-
-    <section class="settings-section">
-      <h2 class="section-label">Topics</h2>
-      <form method="post" action="/settings/topics" hx-post="/settings/topics" hx-target="#settings-panel" hx-swap="outerHTML">
-        <div class="topic-list">
-          {% for topic in topics %}
-            <div class="topic-row">
-              <input name="topic_name" value="{{ topic.name }}" aria-label="Topic name">
-              <input type="number" name="topic_min_faves" min="0" value="{{ topic.min_faves }}" aria-label="{{ topic.name }} minimum favorites">
-            </div>
-          {% endfor %}
-          <div class="topic-row">
-            <input name="topic_name" placeholder="New topic" aria-label="New topic name">
-            <input type="number" name="topic_min_faves" min="0" value="0" aria-label="New topic minimum favorites">
-          </div>
-        </div>
-        <button class="button button-muted" type="submit">Save topics</button>
-      </form>
-    </section>
-
-    <section class="settings-section">
-      <h2 class="section-label">Picks prompt</h2>
-      <p class="muted-copy">Prompt policy remains user-owned. Saving creates a durable event version note.</p>
-      <form method="post" action="/settings/prompt" hx-post="/settings/prompt" hx-target="#settings-panel" hx-swap="outerHTML">
-        <textarea name="prompt" rows="12" placeholder="Write the picks prompt when the editorial policy is ready.">{{ prompt }}</textarea>
-        <div class="form-actions">
-          <button class="button" type="submit">Save prompt</button>
-          <button class="button button-muted" type="button" hx-post="/settings/prompt/reset" hx-target="#settings-panel" hx-swap="outerHTML"{% if not prompt_default_exists %} disabled title="No default prompt installed"{% endif %}>Reset to installed default</button>
-        </div>
-      </form>
     </section>
 
   {% elif tab == "schedule" %}
@@ -107,13 +63,6 @@
         </div>
       </section>
       <section class="settings-section">
-        <h2 class="section-label">Weekly report</h2>
-        <div class="form-grid">
-          <label><span>Day</span><select name="weekly_day">{% for day in ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] %}<option value="{{ day }}"{% if runtime_config.schedule.weekly_day == day %} selected{% endif %}>{{ day|upper }}</option>{% endfor %}</select></label>
-          <label><span>Time</span><input type="time" name="weekly_time" value="{{ runtime_config.schedule.weekly_time }}"></label>
-        </div>
-      </section>
-      <section class="settings-section">
         <h2 class="section-label">Curation behavior</h2>
         <div class="form-grid">
           <label><span>Minimum picks</span><input type="number" name="picks_minimum" min="0" max="20" value="{{ runtime_config.picks.minimum }}"></label>
@@ -121,11 +70,13 @@
           <label><span>Clustering aggressiveness</span><input type="range" name="clustering_aggressiveness" min="0" max="100" value="{{ settings.get('clustering.aggressiveness', '45') }}"></label>
         </div>
         <label class="check-row"><input type="checkbox" name="topic_decay"{% if settings.get('topic_decay.enabled', 'true') == 'true' %} checked{% endif %}><span><strong>Topic decay</strong><small>Down-weight themes whose cluster detail you never open.</small></span></label>
+        <input type="hidden" name="weekly_day" value="{{ runtime_config.schedule.weekly_day }}">
+        <input type="hidden" name="weekly_time" value="{{ runtime_config.schedule.weekly_time }}">
       </section>
       <button class="button" type="submit">Save schedule</button>
     </form>
 
-  {% else %}
+  {% elif tab == "system" %}
     <section class="settings-section">
       <div class="health-grid">
         <div><span>Session cookie</span><strong>{% if health.cookie.ok %}OK{% else %}Needs attention{% endif %}</strong></div>
@@ -134,11 +85,10 @@
         <div><span>LLM spend</span><strong>&#36;{{ "%.2f"|format(spend.today_usd) }}</strong><small>&#36;{{ "%.2f"|format(spend.month_usd) }} this month</small></div>
         <div><span>Storage</span><strong>{{ "%.1f"|format(spend.database_bytes / 1048576) }} MB</strong></div>
         <div><span>Scheduled jobs</span><strong>{{ jobs|length }}</strong></div>
+        <div><span>Follow queue</span><strong>{{ pending_follows }} pending</strong></div>
       </div>
       <div class="form-actions">
-        <button class="button" type="button" hx-post="/settings/run/fetch" hx-target="#settings-panel" hx-swap="outerHTML">Run fetch</button>
         <button class="button button-muted" type="button" hx-post="/settings/run/rebuild" hx-target="#settings-panel" hx-swap="outerHTML">Rebuild digest</button>
-        <button class="button button-muted" type="button" hx-post="/settings/run/weekly" hx-target="#settings-panel" hx-swap="outerHTML">Run weekly</button>
       </div>
     </section>
     <section class="settings-section">
@@ -153,5 +103,59 @@
         {% for event in events %}<div><strong>{{ event.kind }}</strong><span>{{ event.at|absolute_time }}</span><code>{{ event.payload }}</code></div>{% else %}<p>No events recorded.</p>{% endfor %}
       </div>
     </section>
+
+  {% else %}
+    <details class="settings-section" open>
+      <summary class="section-label">Legacy (list pipeline)</summary>
+      <p class="muted-copy">X list cookies, Anthropic, Telegram, seed accounts, and list-mode job runners. Unused on the live scrape/Tailscale path — kept for Umbrel/list mode only.</p>
+
+      <form class="settings-form" method="post" action="/settings/credentials" hx-post="/settings/credentials" hx-target="#settings-panel" hx-swap="outerHTML">
+        <h3 class="section-label">X session</h3>
+        <div class="form-grid">
+          <label><span>auth_token</span><input type="password" name="x_auth_token" autocomplete="off" placeholder="{% if health.configured.x_is_configured %}Configured, enter to replace{% else %}Not configured{% endif %}"></label>
+          <label><span>ct0</span><input type="password" name="x_ct0" autocomplete="off" placeholder="{% if health.configured.x_is_configured %}Configured, enter to replace{% else %}Not configured{% endif %}"></label>
+        </div>
+        <h3 class="section-label">Anthropic</h3>
+        <div class="form-grid">
+          <label><span>API key</span><input type="password" name="anthropic_api_key" autocomplete="off" placeholder="{% if health.configured.anthropic_is_configured %}Configured, enter to replace{% else %}Not configured{% endif %}"></label>
+        </div>
+        <h3 class="section-label">Telegram</h3>
+        <div class="form-grid">
+          <label><span>Bot token</span><input type="password" name="telegram_bot_token" autocomplete="off" placeholder="{% if health.configured.telegram_is_configured %}Configured, enter to replace{% else %}Not configured{% endif %}"></label>
+          <label><span>Chat ID</span><input name="telegram_chat_id" autocomplete="off" placeholder="{% if health.configured.telegram_is_configured %}Configured, enter to replace{% else %}Not configured{% endif %}"></label>
+        </div>
+        <button class="button" type="submit">Save credentials</button>
+      </form>
+
+      <h3 class="section-label">Seed accounts</h3>
+      <div class="account-list">
+        {% for account in accounts %}
+          <div class="account-row">
+            <strong class="{% if account.muted %}is-muted{% endif %}">@{{ account.handle }}</strong>
+            <form method="post" action="/settings/accounts/{{ account.handle }}/mute" hx-post="/settings/accounts/{{ account.handle }}/mute" hx-target="#settings-panel" hx-swap="outerHTML"><button class="text-button" type="submit">{% if account.muted %}Unmute{% else %}Mute{% endif %}</button></form>
+            <form method="post" action="/settings/accounts/{{ account.handle }}/remove" hx-post="/settings/accounts/{{ account.handle }}/remove" hx-target="#settings-panel" hx-swap="outerHTML"><button class="text-button" type="submit">Remove</button></form>
+          </div>
+        {% endfor %}
+      </div>
+      <form class="inline-form" method="post" action="/settings/accounts/add" hx-post="/settings/accounts/add" hx-target="#settings-panel" hx-swap="outerHTML">
+        <label><span>Handle</span><input name="handle" placeholder="@handle" required></label>
+        <button class="button button-muted" type="submit">Add account</button>
+      </form>
+
+      <h3 class="section-label">List-mode jobs</h3>
+      <div class="form-actions">
+        <button class="button button-muted" type="button" hx-post="/settings/run/fetch" hx-target="#settings-panel" hx-swap="outerHTML">Run fetch</button>
+        <button class="button button-muted" type="button" hx-post="/settings/run/weekly" hx-target="#settings-panel" hx-swap="outerHTML">Run weekly</button>
+      </div>
+
+      <h3 class="section-label">Picks prompt</h3>
+      <form method="post" action="/settings/prompt" hx-post="/settings/prompt" hx-target="#settings-panel" hx-swap="outerHTML">
+        <textarea name="prompt" rows="8">{{ prompt }}</textarea>
+        <div class="form-actions">
+          <button class="button" type="submit">Save prompt</button>
+          <button class="button button-muted" type="button" hx-post="/settings/prompt/reset" hx-target="#settings-panel" hx-swap="outerHTML"{% if not prompt_default_exists %} disabled{% endif %}>Reset default</button>
+        </div>
+      </form>
+    </details>
   {% endif %}
 </div>

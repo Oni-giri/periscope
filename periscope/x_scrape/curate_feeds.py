@@ -21,7 +21,9 @@ ENV_PATH = Path(
     or "data/secrets.env"
 )
 
-SYSTEM = """You rank tweets for a daily magazine. The reader has ADHD and does not want doomscroll bait.
+DEFAULT_INTERESTS = ("ai", "latvia", "crypto", "tools", "science", "business")
+
+DEFAULT_SYSTEM = """You rank tweets for a daily magazine. The reader has ADHD and does not want doomscroll bait.
 
 KEEP if it is notable for: AI/ML models and tools, Latvia (informational, not electoral combat), crypto/DeFi (real protocol/product news, not shills), new developer tools, statistics/science, or serious business/tech.
 
@@ -31,56 +33,132 @@ Return JSON only:
 {"items":[{"status_id":"...","keep":true,"score":0,"topic":"ai|latvia|crypto|tools|science|business|other","why":"one line","skip_reason":""}]}
 score is 0-10. Keep only score >= 6 unless it is uniquely important.
 Every input status_id must appear exactly once.
+
+You MAY use **bold** sparingly in why/commentary text to emphasize important names, numbers, and key points for ADHD readability. Never invent other markup.
 """
 
-SCHEMA = {
-    "type": "json_schema",
-    "json_schema": {
-        "name": "tweet_shortlist",
-        "strict": True,
-        "schema": {
-            "type": "object",
-            "additionalProperties": False,
-            "properties": {
-                "items": {
-                    "type": "array",
+# Back-compat alias used by older imports/tests.
+SYSTEM = DEFAULT_SYSTEM
+
+
+def _interest_slug(name: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", str(name or "").strip().lower()).strip("-")
+    return slug or "other"
+
+
+def load_interest_topics(db_path: Path | None = None) -> list[str]:
+    """Read curator interests from the topics table; fall back to hardcoded defaults."""
+
+    candidates: list[Path] = []
+    if db_path is not None:
+        candidates.append(Path(db_path))
+    data_dir = os.environ.get("PERISCOPE_DATA_DIR")
+    if data_dir:
+        candidates.append(Path(data_dir) / "periscope.db")
+    candidates.append(Path("data/periscope.db"))
+    env_db = os.environ.get("PERISCOPE_DB")
+    if env_db:
+        candidates.insert(0, Path(env_db))
+
+    for candidate in candidates:
+        if not candidate.exists():
+            continue
+        try:
+            import sqlite3
+
+            with sqlite3.connect(candidate) as connection:
+                rows = connection.execute(
+                    "SELECT name FROM topics ORDER BY name COLLATE NOCASE"
+                ).fetchall()
+            names = [_interest_slug(row[0]) for row in rows if row and row[0]]
+            names = [name for name in names if name and name != "other"]
+            # de-dupe preserving order
+            seen: set[str] = set()
+            clean: list[str] = []
+            for name in names:
+                if name in seen:
+                    continue
+                seen.add(name)
+                clean.append(name)
+            if clean:
+                return clean
+        except Exception:
+            continue
+    return list(DEFAULT_INTERESTS)
+
+
+def build_system_prompt(topics: list[str] | None = None) -> str:
+    interests = topics or list(DEFAULT_INTERESTS)
+    joined = ", ".join(interests)
+    enum = "|".join([*interests, "other"])
+    return (
+        "You rank tweets for a daily magazine. The reader has ADHD and does not want doomscroll bait.\n\n"
+        f"KEEP if it is notable for these interests: {joined}.\n\n"
+        "SKIP: ads, ragebait, engagement bait, reply-guy nothing, price-go-up memes, "
+        "generic motivational posts, duplicates of a more complete tweet in the batch.\n\n"
+        "Return JSON only:\n"
+        '{"items":[{"status_id":"...","keep":true,"score":0,'
+        f'"topic":"{enum}","why":"one line","skip_reason":""}}]}}\n'
+        "score is 0-10. Keep only score >= 6 unless it is uniquely important.\n"
+        "Every input status_id must appear exactly once.\n\n"
+        "You MAY use **bold** sparingly in why/commentary text to emphasize important names, numbers, and key points for ADHD readability. Never invent other markup.\n"
+    )
+
+
+def build_schema(topics: list[str] | None = None) -> dict:
+    interests = topics or list(DEFAULT_INTERESTS)
+    enum = [*interests, "other"]
+    # ensure unique
+    seen: set[str] = set()
+    clean_enum: list[str] = []
+    for item in enum:
+        if item in seen:
+            continue
+        seen.add(item)
+        clean_enum.append(item)
+    return {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "tweet_shortlist",
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
                     "items": {
-                        "type": "object",
-                        "additionalProperties": False,
-                        "properties": {
-                            "status_id": {"type": "string"},
-                            "keep": {"type": "boolean"},
-                            "score": {"type": "integer"},
-                            "topic": {
-                                "type": "string",
-                                "enum": [
-                                    "ai",
-                                    "latvia",
-                                    "crypto",
-                                    "tools",
-                                    "science",
-                                    "business",
-                                    "other",
-                                ],
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "properties": {
+                                "status_id": {"type": "string"},
+                                "keep": {"type": "boolean"},
+                                "score": {"type": "integer"},
+                                "topic": {
+                                    "type": "string",
+                                    "enum": clean_enum,
+                                },
+                                "why": {"type": "string"},
+                                "skip_reason": {"type": "string"},
                             },
-                            "why": {"type": "string"},
-                            "skip_reason": {"type": "string"},
+                            "required": [
+                                "status_id",
+                                "keep",
+                                "score",
+                                "topic",
+                                "why",
+                                "skip_reason",
+                            ],
                         },
-                        "required": [
-                            "status_id",
-                            "keep",
-                            "score",
-                            "topic",
-                            "why",
-                            "skip_reason",
-                        ],
-                    },
-                }
+                    }
+                },
+                "required": ["items"],
             },
-            "required": ["items"],
         },
-    },
-}
+    }
+
+
+SCHEMA = build_schema()
 
 
 def load_dotenv(path: Path) -> None:
@@ -142,14 +220,22 @@ def batches(items: list, n: int):
         yield items[i : i + n]
 
 
-def call_openrouter(client: httpx.Client, key: str, model: str, batch: list[dict]) -> list[dict]:
+def call_openrouter(
+    client: httpx.Client,
+    key: str,
+    model: str,
+    batch: list[dict],
+    *,
+    system: str | None = None,
+    schema: dict | None = None,
+) -> list[dict]:
     payload = {
         "model": model,
         "temperature": 0.1,
         "reasoning": {"effort": "low"},
-        "response_format": SCHEMA,
+        "response_format": schema or SCHEMA,
         "messages": [
-            {"role": "system", "content": SYSTEM},
+            {"role": "system", "content": system or SYSTEM},
             {
                 "role": "user",
                 "content": "Rank these tweets:\n" + json.dumps(batch, ensure_ascii=False),
@@ -192,6 +278,10 @@ def main() -> int:
 
     load_dotenv(ENV_PATH)
     load_dotenv(Path(".env"))
+    interests = load_interest_topics()
+    system_prompt = build_system_prompt(interests)
+    response_schema = build_schema(interests)
+    print(f"interests: {', '.join(interests)}", flush=True)
     key = os.environ.get("OPENROUTER_API_KEY", "").strip()
     if not key:
         print(
@@ -211,7 +301,16 @@ def main() -> int:
             print(f"batch {i}: {len(batch)} tweets via {args.model}", flush=True)
             for attempt in range(3):
                 try:
-                    judged.extend(call_openrouter(client, key, args.model, batch))
+                    judged.extend(
+                        call_openrouter(
+                            client,
+                            key,
+                            args.model,
+                            batch,
+                            system=system_prompt,
+                            schema=response_schema,
+                        )
+                    )
                     break
                 except Exception as e:
                     print(f"  retry {attempt + 1}: {e}", flush=True)

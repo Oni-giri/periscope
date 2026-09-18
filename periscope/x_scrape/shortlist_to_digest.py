@@ -33,6 +33,8 @@ def convert(
     """Build a Periscope ingest document from shortlist keepers.
 
     Optional ``highlights`` is edition-level magazine prose for the Today lede.
+    Highlights and pick commentary may use ``**bold**`` sparingly; the web UI
+    renders that subset safely.
     Prefer 2–4 short opinionated paragraphs separated by blank lines (`\n\n`),
     not one wall of text. Leave empty so a curator/agent can fill it later;
     ingest persists it when set.

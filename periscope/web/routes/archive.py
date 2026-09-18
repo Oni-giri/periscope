@@ -6,6 +6,7 @@ from fastapi import APIRouter, Query, Request
 from fastapi.responses import HTMLResponse
 
 from periscope.db import TWEET_ACTION_TYPES, SearchQueryError
+from periscope.runtime import ui_settings
 from periscope.web.context import base_context, database_for
 
 ACTION_FILTERS = ("any",) + TWEET_ACTION_TYPES
@@ -26,6 +27,13 @@ async def archive(
     page: int = Query(1, ge=1),
 ) -> HTMLResponse:
     database = database_for(request)
+    # Bare /archive landing applies the Settings default; any query opts out.
+    if not request.query_params:
+        default = str(ui_settings(database)["archive_default_filter"])
+        if default == "has_action":
+            action = "any"
+        elif default == "kept":
+            kept = "true"
     kept_value = None
     if kept in {"1", "true", "yes"}:
         kept_value = True
@@ -66,6 +74,7 @@ async def archive(
             "queued_handles": database.queued_follow_handles(),
             "follow_source": "archive",
             "search_error": error,
+            "archive_default_filter": ui_settings(database)["archive_default_filter"],
         }
     )
     return request.app.state.templates.TemplateResponse(

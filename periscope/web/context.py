@@ -2,12 +2,33 @@
 
 from __future__ import annotations
 
+import re
+
 from datetime import UTC, date, datetime
 from typing import Any
 
 from fastapi import Request
+from markupsafe import Markup, escape
 
 from periscope.db import Database
+
+_BOLD_RE = re.compile(r"\*\*(.+?)\*\*")
+
+
+
+def md_bold(value: object) -> Markup:
+    """Escape text, then render a safe ``**bold**`` subset as <strong>."""
+
+    raw = "" if value is None else str(value)
+    escaped = str(escape(raw))
+
+    def _wrap(match: re.Match[str]) -> str:
+        inner = match.group(1)
+        if not inner:
+            return match.group(0)
+        return f"<strong>{inner}</strong>"
+
+    return Markup(_BOLD_RE.sub(_wrap, escaped))
 
 
 def database_for(request: Request) -> Database:
@@ -60,13 +81,21 @@ def date_heading(value: str | date) -> str:
 def base_context(request: Request, *, page: str, title: str) -> dict[str, Any]:
     database = database_for(request)
     health = database.health_summary()
-    discovery = database.rows("SELECT COUNT(*) AS count FROM candidates WHERE status = 'pending'")
+    pending_follows = database.rows(
+        "SELECT COUNT(*) AS count FROM follow_queue WHERE status = 'pending'"
+    )
+    pending_candidates = database.rows(
+        "SELECT COUNT(*) AS count FROM candidates WHERE status = 'pending'"
+    )
+    follow_n = int(pending_follows[0]["count"]) if pending_follows else 0
+    candidate_n = int(pending_candidates[0]["count"]) if pending_candidates else 0
     config = request.app.state.config
     return {
         "request": request,
         "page": page,
         "title": title,
         "health": health,
-        "discovery_count": int(discovery[0]["count"]) if discovery else 0,
+        "discovery_count": candidate_n,
+        "inbox_count": follow_n + candidate_n,
         "schedule_times": config.schedule.daily_times,
     }

@@ -2,18 +2,13 @@
 {% block content %}
   <header class="page-header">
     <h1>Feed</h1>
-    <p class="lede">Posts from the latest scrape that didn't make Today. This page ends.</p>
+    <p class="lede">Posts from the latest scrape that didn't make Today. This page ends{% if feed_capped %} — showing {{ feed_shown }} of {{ feed_total }} (cap {{ feed_max_posts }}){% elif feed_total %} — {{ feed_total }} posts{% endif %}.</p>
   </header>
 
   <form class="filter-bar" method="get" action="{{ url_for('feed') }}">
     <label>
       <span>Account</span>
-      <select name="account">
-        <option value="">All accounts</option>
-        {% for account in facets.accounts %}
-          <option value="{{ account }}"{% if account == selected_account %} selected{% endif %}>@{{ account }}</option>
-        {% endfor %}
-      </select>
+      <input type="search" name="account" value="{{ selected_account }}" placeholder="@handle" autocomplete="off" spellcheck="false">
     </label>
     <label class="checkbox-label">
       <input type="checkbox" name="kept" value="true"{% if kept_only %} checked{% endif %}>
@@ -34,17 +29,37 @@
         </header>
         <div class="feed-list">
           {% for tweet in batch.tweets %}
+            {% set tweet_url = tweet.tweet_url or ('https://x.com/' ~ tweet.author ~ '/status/' ~ tweet.id) %}
             <article class="feed-post">
               {% if tweet.avatar %}
-              <img class="avatar" src="{{ tweet.avatar }}" alt="" width="24" height="24">
+              <img class="avatar" src="{{ tweet.avatar }}" alt="" width="24" height="24" data-initials="{{ tweet.author[:2]|upper }}" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'avatar',textContent:this.dataset.initials||'?'}))">
               {% else %}
               <span class="avatar">{{ tweet.author[:2]|upper }}</span>
               {% endif %}
               <div class="feed-copy">
-                <strong>@{{ tweet.author }}</strong>
-                <p>{{ tweet.text }}</p>
-                {% if tweet.thread_root_id != tweet.id %}
-                  <span class="thread-label">Thread reply</span>
+                <div class="feed-meta">
+                  <strong><a class="author-link" href="{{ tweet_url }}">@{{ tweet.author }}</a></strong>
+                  {% if tweet.kind == 'reply' or (tweet.thread_root_id and tweet.thread_root_id != tweet.id) %}
+                    <span class="thread-label">Reply</span>
+                  {% endif %}
+                  {% if tweet.quoted_id or tweet.quoted %}
+                    <span class="thread-label">Quote</span>
+                  {% endif %}
+                  <a class="open-on-x" href="{{ tweet_url }}" rel="noopener noreferrer">Open on X</a>
+                </div>
+                <p class="feed-text">{{ tweet.text }}</p>
+                {% if tweet.quoted and tweet.quoted.text %}
+                  <blockquote class="feed-quote">
+                    {% if tweet.quoted.author %}<strong>@{{ tweet.quoted.author }}</strong>{% endif %}
+                    <p>{{ tweet.quoted.text }}</p>
+                  </blockquote>
+                {% endif %}
+                {% if tweet.media %}
+                  <figure class="pick-media{% if tweet.media|length > 1 %} pick-media-gallery{% endif %}">
+                    {% for src in tweet.media %}
+                      <img src="{{ src }}" alt="" loading="lazy">
+                    {% endfor %}
+                  </figure>
                 {% endif %}
               </div>
               <time datetime="{{ tweet.created_at }}">{{ tweet.created_at|absolute_time }}</time>
@@ -54,7 +69,9 @@
         </div>
       </section>
     {% endfor %}
-    <footer class="page-footer"><span>End of feed</span></footer>
+    <footer class="page-footer">
+      <span>{% if feed_capped %}Cap reached · {{ feed_shown }} shown of {{ feed_total }}{% else %}End of feed{% endif %}</span>
+    </footer>
   {% else %}
     <section class="empty-state compact">
       <span class="empty-kicker">Nothing in this window</span>

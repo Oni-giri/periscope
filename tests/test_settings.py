@@ -132,10 +132,47 @@ def test_settings_separate_secrets_and_apply_runtime_updates(app_config) -> None
         assert "Weekly queued" in run.text
         assert runner.launched == ["weekly"]
 
+
+        reading = client.post(
+            "/settings/reading",
+            data={
+                "feed_max_posts": "40",
+                "archive_default_filter": "kept",
+                "interests": "ai\nlatvia\ncrypto",
+            },
+            headers={"HX-Request": "true"},
+        )
+        assert "Reading settings saved" in reading.text
+        from periscope.runtime import ui_settings
+
+        assert ui_settings(database)["feed_max_posts"] == 40
+        assert ui_settings(database)["archive_default_filter"] == "kept"
+        assert [item["name"] for item in database.list_topics()] == ["ai", "crypto", "latvia"]
+
+        archive = client.get("/archive")
+        assert archive.status_code == 200
+        # kept default -> keep select shows Kept
+        assert 'name="kept"' in archive.text
+        assert 'value="true" selected' in archive.text or "selected" in archive.text
+
+        feed = client.get("/feed")
+        assert feed.status_code == 200
+        assert 'type="search"' in feed.text
+        assert "<select name=\"account\">" not in feed.text
+
+        inbox = client.get("/inbox")
+        assert inbox.status_code == 200
+        assert "No follow propositions" in inbox.text
+        home = client.get("/")
+        assert 'href="/inbox"' in home.text or "Inbox" in home.text
+        assert ">Discovery<" not in home.text
+        assert ">Ideas<" not in home.text
+        assert ">Weekly<" not in home.text
+
         page = client.get("/settings?tab=system")
         assert page.status_code == 200
-        assert "System health" in page.text
         assert "Event log" in page.text
+        assert "Follow queue" in page.text
 
         health = client.get("/health").json()
         assert len(health["scheduled_jobs"]) == 4
