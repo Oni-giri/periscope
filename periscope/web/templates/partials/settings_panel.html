@@ -144,8 +144,8 @@
   {% elif tab == "connections" %}
     <form class="settings-form" method="post" action="/settings/credentials" hx-post="/settings/credentials" hx-target="#settings-panel" hx-swap="outerHTML">
       <section class="settings-section">
-        <h2 class="section-label">LLM / OpenRouter</h2>
-        <p class="muted-copy">Used by the scrape curator and the enrich-actions pass. Base URL is the API root (we append <code>/chat/completions</code>).</p>
+        <h2 class="section-label">LLM (OpenAI-compatible)</h2>
+        <p class="muted-copy">Needs an OpenAI-compatible chat API (we append <code>/chat/completions</code>). Used by the scrape curator and enrich-actions pass. OpenRouter is the default and is OpenAI-compatible; any compatible base URL + key works.</p>
         <div class="form-grid">
           <label>
             <span>API base URL</span>
