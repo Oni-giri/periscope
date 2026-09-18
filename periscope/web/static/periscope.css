@@ -2156,3 +2156,40 @@ input::placeholder {
 .setup-steps li + li {
   margin-top: 6px;
 }
+
+
+.schedule-times {
+  display: grid;
+  gap: 12px;
+  max-width: 420px;
+  margin: 12px 0 16px;
+}
+
+.schedule-time-row {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+}
+
+.schedule-time-row > span {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.form-grid label.span-2 {
+  grid-column: 1 / -1;
+}
+
+.field-help {
+  display: block;
+  margin-top: 8px;
+  color: var(--fg-2);
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  line-height: 1.45;
+}

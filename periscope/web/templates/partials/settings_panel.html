@@ -33,6 +33,9 @@
         <h2 class="section-label">Interests / topics</h2>
         <p class="muted-copy">Required. One topic per line (commas also work). Empty list fails curation — there is no built-in fallback. Sample placeholder: ai, latvia, crypto, tools, science, business.</p>
         <textarea name="interests" rows="8" placeholder="ai&#10;latvia&#10;crypto&#10;tools&#10;science&#10;business">{{ interests_text }}</textarea>
+        <div class="form-actions">
+          <button class="button button-muted" type="button" hx-post="/settings/reading/validate" hx-include="#reading-form" hx-target="#settings-panel" hx-swap="outerHTML">Validate interests</button>
+        </div>
         {% if validation %}
           <div class="validate-report {% if validation.ok %}is-ok{% else %}is-fail{% endif %}" role="status">
             {% if validation.ok %}
@@ -70,7 +73,6 @@
 
       <div class="form-actions reading-actions">
         <button class="button" type="submit">Save reading settings</button>
-        <button class="button button-muted" type="button" hx-post="/settings/reading/validate" hx-include="#reading-form" hx-target="#settings-panel" hx-swap="outerHTML">Validate interests</button>
       </div>
     </form>
 
@@ -88,23 +90,47 @@
     <form class="settings-form" method="post" action="/settings/schedule" hx-post="/settings/schedule" hx-target="#settings-panel" hx-swap="outerHTML">
       <section class="settings-section">
         <h2 class="section-label">Digest schedule</h2>
+        <p class="muted-copy">Timezone for clock times below. Add one or more daily run times (local wall clock). Clear a row and save to remove it. Blank trailing rows are ignored.</p>
         <div class="form-grid">
           <label><span>Timezone</span><input name="timezone" value="{{ runtime_config.schedule.timezone }}" required></label>
-          {% for value in runtime_config.schedule.daily_times %}
-            <label><span>Daily time {{ loop.index }}</span><input type="time" name="daily_time" value="{{ value }}" required></label>
-          {% endfor %}
-          {% if runtime_config.schedule.daily_times|length == 1 %}
-            <label><span>Optional second time</span><input type="time" name="daily_time"></label>
-          {% endif %}
-          <label><span>Feed interval, minutes</span><input type="number" name="feed_interval_minutes" min="5" max="1440" value="{{ runtime_config.schedule.feed_interval_minutes }}"></label>
         </div>
+        <h3 class="section-label">Scheduled runs</h3>
+        <div class="schedule-times">
+          {% set times = runtime_config.schedule.daily_times %}
+          {% for value in times %}
+            <label class="schedule-time-row">
+              <span>Run {{ loop.index }}</span>
+              <input type="time" name="daily_time" value="{{ value }}">
+            </label>
+          {% endfor %}
+          {# Always offer empty slots so you can grow the list (up to 8 total). #}
+          {% set empty_slots = 2 if times|length == 0 else (1 if times|length < 8 else 0) %}
+          {% for i in range(empty_slots) %}
+            <label class="schedule-time-row">
+              <span>{% if times|length == 0 and loop.first %}First run{% elif times|length == 0 %}Second run{% else %}Add another{% endif %}</span>
+              <input type="time" name="daily_time" value="">
+            </label>
+          {% endfor %}
+        </div>
+        <p class="muted-copy">Tip: after saving, use System → Next runs to confirm the next fire times. Save again with an extra filled time to add a third (or more) run.</p>
+        <details class="advanced-block">
+          <summary>Advanced: interval feed job</summary>
+          <p class="muted-copy">Separate from clock times. How often the old interval “feed” job wakes (minutes). Daily digests use the scheduled runs above.</p>
+          <div class="form-grid">
+            <label><span>Feed interval, minutes</span><input type="number" name="feed_interval_minutes" min="5" max="10080" value="{{ runtime_config.schedule.feed_interval_minutes }}"></label>
+          </div>
+        </details>
       </section>
       <section class="settings-section">
         <h2 class="section-label">Curation behavior</h2>
         <div class="form-grid">
           <label><span>Minimum picks</span><input type="number" name="picks_minimum" min="0" max="20" value="{{ runtime_config.picks.minimum }}"></label>
           <label><span>Maximum picks</span><input type="number" name="picks_maximum" min="0" max="20" value="{{ runtime_config.picks.maximum }}"></label>
-          <label><span>Clustering aggressiveness</span><input type="range" name="clustering_aggressiveness" min="0" max="100" value="{{ settings.get('clustering.aggressiveness', '45') }}"></label>
+          <label class="span-2">
+            <span>Clustering aggressiveness</span>
+            <input type="range" name="clustering_aggressiveness" min="0" max="100" value="{{ settings.get('clustering.aggressiveness', '45') }}">
+            <small class="field-help">How eagerly Today groups related tweets into one story. Low keeps posts separate; high merges more tweets under shared headlines. 0 = almost no merging, 100 = aggressive story bundling. Default ~45.</small>
+          </label>
         </div>
         <label class="check-row"><input type="checkbox" name="topic_decay"{% if settings.get('topic_decay.enabled', 'true') == 'true' %} checked{% endif %}><span><strong>Topic decay</strong><small>Down-weight themes whose cluster detail you never open.</small></span></label>
         <input type="hidden" name="weekly_day" value="{{ runtime_config.schedule.weekly_day }}">

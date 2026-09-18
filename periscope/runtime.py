@@ -98,14 +98,25 @@ def save_schedule_settings(
     except ZoneInfoNotFoundError as exc:
         raise RuntimeSettingsError(f"Unknown timezone: {timezone}") from exc
     clean_daily = [_valid_time(item, "Daily time") for item in daily_times if item.strip()]
-    if not clean_daily or len(clean_daily) > 2:
-        raise RuntimeSettingsError("Choose one or two daily digest times")
+    # de-dupe preserving order
+    seen: set[str] = set()
+    unique_daily: list[str] = []
+    for item in clean_daily:
+        if item in seen:
+            continue
+        seen.add(item)
+        unique_daily.append(item)
+    clean_daily = unique_daily
+    if not clean_daily:
+        raise RuntimeSettingsError("Add at least one scheduled run time (HH:MM)")
+    if len(clean_daily) > 8:
+        raise RuntimeSettingsError("At most 8 scheduled run times")
     day = weekly_day.strip().lower()[:3]
     if day not in _DAYS:
         raise RuntimeSettingsError("Weekly day must be Monday through Sunday")
     weekly = _valid_time(weekly_time, "Weekly time")
-    if not 5 <= feed_interval_minutes <= 1440:
-        raise RuntimeSettingsError("Feed interval must be between 5 and 1440 minutes")
+    if not 5 <= feed_interval_minutes <= 10080:
+        raise RuntimeSettingsError("Feed interval must be between 5 and 10080 minutes (up to 7 days)")
     if not 0 <= picks_minimum <= picks_maximum <= 20:
         raise RuntimeSettingsError("Pick limits must satisfy 0 <= minimum <= maximum <= 20")
     if not 0 <= clustering_aggressiveness <= 100:
