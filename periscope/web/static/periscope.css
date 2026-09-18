@@ -2143,3 +2143,16 @@ input::placeholder {
 .advanced-block .muted-copy {
   margin: 0 0 12px;
 }
+
+
+.setup-steps {
+  max-width: 680px;
+  margin: 14px 0 10px;
+  padding-left: 1.25rem;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.setup-steps li + li {
+  margin-top: 6px;
+}

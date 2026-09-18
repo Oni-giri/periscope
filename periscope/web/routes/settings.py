@@ -45,13 +45,36 @@ _TABS = {"reading", "schedule", "system", "connections"}
 
 
 def _chrome_profile_path(config: Any) -> Any:
+    """Resolve the Chromium user-data dir used for X scrape login."""
     import os
     from pathlib import Path
 
     env = os.environ.get("PERISCOPE_X_CHROME_PROFILE")
     if env:
         return Path(env).expanduser()
-    return Path(config.data_dir) / "chrome-profile"
+
+    candidates = [
+        Path("/workspace/x-scrape/chrome-profile"),  # daily recap routines
+        Path(config.data_dir) / "chrome-profile",
+        Path("data/chrome-profile"),
+    ]
+    for candidate in candidates:
+        if (candidate / "Default").exists():
+            return candidate
+    return candidates[0]
+
+
+def _chrome_profile_ready(path: Any) -> bool:
+    from pathlib import Path
+
+    profile = Path(path)
+    default = profile / "Default"
+    if not default.exists():
+        return False
+    # Cookies or Local Storage are enough to treat as "created + used"
+    return (default / "Cookies").exists() or (default / "Network" / "Cookies").exists() or (
+        profile / "Local State"
+    ).exists()
 
 
 def _parse_interest_names(raw: str) -> list[str]:
@@ -128,7 +151,9 @@ def _context(
             getattr(request.app.state.secrets, "openrouter_configured", False)
         ),
         "chrome_profile": str(_chrome_profile_path(request.app.state.config)),
-        "chrome_profile_exists": _chrome_profile_path(request.app.state.config).exists(),
+        "chrome_profile_ready": _chrome_profile_ready(
+            _chrome_profile_path(request.app.state.config)
+        ),
         "events": database.recent_events(limit=30),
         "spend": database.spend_summary(),
         "jobs": scheduled_jobs(getattr(request.app.state, "scheduler", None)),

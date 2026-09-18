@@ -159,18 +159,24 @@
       </section>
 
       <section class="settings-section">
-        <h2 class="section-label">Twitter / X</h2>
-        <p class="muted-copy">X scrape uses the signed-in Chrome profile on this machine. Live Tailscale scrape does not read <code>auth_token</code> / <code>ct0</code>.</p>
+        <h2 class="section-label">Twitter / X login</h2>
+        <p class="muted-copy"><strong>You do not need an API token for the daily magazine.</strong> The scraper opens a dedicated Chromium browser on this computer, saves its cookies in a folder (the “Chrome profile”), and reuses that login next time — same idea as staying signed in on your laptop.</p>
         <div class="health-grid">
           <div>
-            <span>Chrome profile</span>
-            <strong>{% if chrome_profile_exists %}Present{% else %}Missing{% endif %}</strong>
-            <small>{{ chrome_profile }}{% if not chrome_profile_exists %} — sign in once in this profile, then rerun scrape{% endif %}</small>
+            <span>Login status</span>
+            <strong>{% if chrome_profile_ready %}Ready{% else %}Needs sign-in{% endif %}</strong>
+            <small>Profile folder: <code>{{ chrome_profile }}</code></small>
           </div>
         </div>
+        <ol class="muted-copy setup-steps">
+          <li>Ask me (or open my desktop) and run the X scrape once with a visible browser.</li>
+          <li>When X shows the login page, sign in as usual in that window.</li>
+          <li>After you’re in, close it — the profile folder keeps the session. Morning/evening scrapes reuse it automatically.</li>
+        </ol>
+        <p class="muted-copy">Skip the cookie fields below. Those are only for an old unused list-fetch path.</p>
         <details class="advanced-block">
-          <summary>Advanced: list-mode cookies</summary>
-          <p class="muted-copy">Only the old list/fetch <code>xclient</code> path uses these. Leave blank unless you still run that pipeline.</p>
+          <summary>Advanced (unused): list-mode cookies</summary>
+          <p class="muted-copy">Not used by the daily Playwright scrape. Leave blank.</p>
           <div class="form-grid">
             <label><span>auth_token</span><input type="password" name="x_auth_token" autocomplete="off" placeholder="{% if health.configured.x_is_configured %}Configured, enter to replace{% else %}Not configured{% endif %}"></label>
             <label><span>ct0</span><input type="password" name="x_ct0" autocomplete="off" placeholder="{% if health.configured.x_is_configured %}Configured, enter to replace{% else %}Not configured{% endif %}"></label>
