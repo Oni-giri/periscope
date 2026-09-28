@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse
 
 from periscope.config import normalize_handle
@@ -26,9 +26,19 @@ from periscope.runtime import (
     save_ui_settings,
     ui_settings,
     update_secrets_file,
+    llm_model,
+    save_llm_model,
+    sync_config_models,
 )
 from periscope.scheduler import configure_scheduler, scheduled_jobs
 from periscope.telegram.bot import build_notifier
+from periscope.web import auth as web_auth
+from periscope.web.chrome_profile import (
+    extract_zip_to_temp,
+    read_profile_meta,
+    replace_chrome_profile,
+    write_profile_meta,
+)
 from periscope.web.context import base_context, database_for
 from periscope.x_scrape.curate_feeds import (
     DEFAULT_OPENROUTER_BASE,
@@ -75,6 +85,19 @@ def _chrome_profile_ready(path: Any) -> bool:
     return (default / "Cookies").exists() or (default / "Network" / "Cookies").exists() or (
         profile / "Local State"
     ).exists()
+
+
+def _chrome_profile_meta_context(data_dir: Any) -> dict[str, Any]:
+    meta = read_profile_meta(data_dir)
+    if not meta:
+        return {
+            "chrome_profile_uploaded_at": None,
+            "chrome_profile_upload_name": None,
+        }
+    return {
+        "chrome_profile_uploaded_at": meta.get("uploaded_at"),
+        "chrome_profile_upload_name": meta.get("source_filename"),
+    }
 
 
 def _parse_interest_names(raw: str) -> list[str]:
@@ -150,13 +173,16 @@ def _context(
         "openrouter_configured": bool(
             getattr(request.app.state.secrets, "openrouter_configured", False)
         ),
+        "llm_model_id": llm_model(database),
         "chrome_profile": str(_chrome_profile_path(request.app.state.config)),
         "chrome_profile_ready": _chrome_profile_ready(
             _chrome_profile_path(request.app.state.config)
         ),
+        **_chrome_profile_meta_context(request.app.state.config.data_dir),
         "events": database.recent_events(limit=30),
         "spend": database.spend_summary(),
         "jobs": scheduled_jobs(getattr(request.app.state, "scheduler", None)),
+        "web_password_set": web_auth.password_is_set(request.app.state.config.data_dir),
     }
 
 
@@ -303,6 +329,7 @@ async def save_credentials(request: Request) -> HTMLResponse:
         "X_AUTH_TOKEN": str(form.get("x_auth_token", "")),
         "X_CT0": str(form.get("x_ct0", "")),
     }
+    model_raw = str(form.get("llm_model", "")).strip()
     try:
         update_secrets_file(request.app.state.config, updates)
         request.app.state.secrets = reload_secrets(request.app.state.config)
@@ -313,6 +340,15 @@ async def save_credentials(request: Request) -> HTMLResponse:
             os.environ["OPENROUTER_API_KEY"] = updates["OPENROUTER_API_KEY"].strip()
         if base_raw:
             os.environ["OPENROUTER_BASE_URL"] = base_raw
+        if model_raw:
+            database = database_for(request)
+            saved_model = save_llm_model(database, model_raw)
+            sync_config_models(request.app.state.config, saved_model)
+            os.environ["OPENROUTER_MODEL"] = saved_model
+            # Keep in-memory config aligned without requiring a process restart.
+            request.app.state.config = effective_config(
+                request.app.state.config, database
+            )
         database_for(request).seed(request.app.state.config, request.app.state.secrets)
         try:
             await request.app.state.telegram_polling.reconfigure(request.app.state.secrets)
@@ -324,6 +360,65 @@ async def save_credentials(request: Request) -> HTMLResponse:
         request,
         tab="connections",
         message="Connections saved locally. Blank fields kept their previous values.",
+    )
+
+
+@router.post("/settings/chrome-profile", response_class=HTMLResponse)
+async def upload_chrome_profile(
+    request: Request,
+    profile_zip: UploadFile = File(...),
+) -> HTMLResponse:
+    """Replace the X scrape Chromium profile from an uploaded zip."""
+    import shutil
+    import tempfile
+    from pathlib import Path
+
+    filename = (profile_zip.filename or "").strip()
+    content_type = (profile_zip.content_type or "").lower()
+    looks_zip_name = filename.lower().endswith(".zip")
+    looks_zip_type = content_type in {
+        "application/zip",
+        "application/x-zip-compressed",
+        "multipart/x-zip",
+    }
+
+    config = request.app.state.config
+    dest = Path(_chrome_profile_path(config))
+    tmp_parent = Path(tempfile.mkdtemp(prefix="periscope-chrome-upload-"))
+    extract_root = None
+    try:
+        raw = await profile_zip.read()
+        if not raw:
+            raise ValueError("Uploaded file is empty.")
+        # Filename .zip or ZIP local-file / empty-archive magic.
+        is_zip_magic = raw[:4] in (b"PK\x03\x04", b"PK\x05\x06")
+        if not (looks_zip_name or is_zip_magic or looks_zip_type):
+            raise ValueError("Upload must be a .zip Chrome profile archive.")
+
+        extract_root = extract_zip_to_temp(raw, tmp_parent)
+        replace_chrome_profile(dest, extract_root)
+        write_profile_meta(
+            config.data_dir,
+            source_filename=filename or "profile.zip",
+            bytes_count=len(raw),
+        )
+        database_for(request).record_event(
+            "chrome_profile_replaced",
+            {
+                "source_filename": filename or "profile.zip",
+                "bytes": len(raw),
+                "dest": str(dest),
+            },
+        )
+    except (ValueError, RuntimeError, OSError) as exc:
+        return _response(request, tab="connections", error=str(exc))
+    finally:
+        shutil.rmtree(tmp_parent, ignore_errors=True)
+
+    return _response(
+        request,
+        tab="connections",
+        message="Chrome profile replaced. Login status should show Ready.",
     )
 
 
@@ -493,3 +588,43 @@ async def run_job(request: Request, job: str) -> HTMLResponse:
     label = "Digest rebuild" if job == "rebuild" else job.title()
     message = f"{label} queued." if launched else f"{label} is already running."
     return _response(request, tab="connections", message=message)
+
+
+@router.post("/settings/web-password", response_class=HTMLResponse)
+async def change_web_password(request: Request) -> HTMLResponse:
+    """Change the web UI password (Settings → System). Requires session cookie."""
+    form = await request.form()
+    old_password = str(form.get("old_password", ""))
+    new_password = str(form.get("new_password", ""))
+    confirm = str(form.get("confirm_password", ""))
+    if len(new_password) < 8:
+        return _response(
+            request,
+            tab="system",
+            error="New password must be at least 8 characters.",
+        )
+    if new_password != confirm:
+        return _response(
+            request,
+            tab="system",
+            error="New passwords do not match.",
+        )
+    try:
+        web_auth.change_password(
+            request.app.state.config.data_dir,
+            old_password=old_password,
+            new_password=new_password,
+        )
+    except FileNotFoundError:
+        return _response(
+            request,
+            tab="system",
+            error="Web password is not configured yet.",
+        )
+    except PermissionError:
+        return _response(
+            request,
+            tab="system",
+            error="Current password is incorrect.",
+        )
+    return _response(request, tab="system", message="Web password updated.")

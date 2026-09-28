@@ -6,6 +6,8 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi.testclient import TestClient
 
+from tests.web_auth_helpers import authed_client
+
 from periscope.config import Secrets, TopicConfig
 from periscope.db import Database
 from periscope.discovery import (
@@ -140,7 +142,7 @@ def test_weekly_job_and_discovery_review(app_config) -> None:
         surfaced_at=now,
     )
     app = create_app(config, Secrets(), database=database, xclient=client)
-    with TestClient(app) as web:
+    with authed_client(app) as web:
         queue = web.get("/discovery")
         assert queue.status_code == 200
         assert "Candidate DB" in queue.text

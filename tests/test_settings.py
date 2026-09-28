@@ -4,6 +4,8 @@ import stat
 
 from fastapi.testclient import TestClient
 
+from tests.web_auth_helpers import authed_client
+
 from periscope.config import Secrets
 from periscope.db import Database
 from periscope.runtime import effective_config
@@ -23,7 +25,7 @@ def test_settings_separate_secrets_and_apply_runtime_updates(app_config) -> None
     database = Database(app_config.db_path)
     app = create_app(app_config, Secrets(), database=database)
 
-    with TestClient(app) as client:
+    with authed_client(app) as client:
         credentials = client.post(
             "/settings/credentials",
             data={
@@ -192,7 +194,7 @@ def test_reading_interests_validate_and_prompt_reset(app_config) -> None:
     database = Database(app_config.db_path)
     app = create_app(app_config, Secrets(), database=database)
 
-    with TestClient(app) as client:
+    with authed_client(app) as client:
         page = client.get("/settings?tab=reading")
         assert page.status_code == 200
         assert "Validate interests" in page.text
@@ -303,7 +305,7 @@ def test_reading_interests_validate_and_prompt_reset(app_config) -> None:
 def test_connections_saves_openrouter(app_config) -> None:
     database = Database(app_config.db_path)
     app = create_app(app_config, Secrets(), database=database)
-    with TestClient(app) as client:
+    with authed_client(app) as client:
         page = client.get("/settings?tab=connections")
         assert "https://openrouter.ai/api/v1" in page.text
         assert "Chrome profile" in page.text

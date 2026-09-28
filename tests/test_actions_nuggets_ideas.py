@@ -6,6 +6,8 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from tests.web_auth_helpers import authed_client
+
 from periscope.config import Secrets
 from periscope.db import Database
 from periscope.jobs.ingest import run_ingest
@@ -107,7 +109,7 @@ def test_today_renders_actions_and_nuggets(app_config) -> None:
     assert "inspectable, restartable" in nugget["nugget_why"]
 
     app = create_app(app_config, Secrets(), database=database)
-    with TestClient(app) as client:
+    with authed_client(app) as client:
         page = client.get("/")
         assert page.status_code == 200
         assert "Nuggets" in page.text
@@ -137,7 +139,7 @@ def test_ideas_park_list_done(app_config) -> None:
     database = Database(app_config.db_path)
     database.initialize()
     app = create_app(app_config, Secrets(), database=database)
-    with TestClient(app) as client:
+    with authed_client(app) as client:
         nav = client.get("/ideas")
         assert nav.status_code == 200
         assert "Ideas" in nav.text
@@ -239,7 +241,7 @@ def test_ingest_indexes_actions_and_archive_filters(app_config) -> None:
     assert first_keep is False
 
     app = create_app(app_config, Secrets(), database=database)
-    with TestClient(app) as client:
+    with authed_client(app) as client:
         page = client.get("/archive?action=try")
         assert page.status_code == 200
         assert "Has action" in page.text
@@ -271,7 +273,7 @@ def test_today_fallback_highlights_when_missing(app_config) -> None:
     rendered = database.get_digest("2026-08-26")["rendered"]
     assert not rendered.get("highlights")
     app = create_app(app_config, Secrets(), database=database)
-    with TestClient(app) as client:
+    with authed_client(app) as client:
         page = client.get("/")
         assert page.status_code == 200
         assert "edition-highlights" in page.text

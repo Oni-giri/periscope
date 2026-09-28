@@ -5,6 +5,8 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from tests.web_auth_helpers import authed_client
+
 from periscope.config import Secrets
 from periscope.db import Database
 from periscope.jobs.ingest import run_ingest
@@ -37,7 +39,7 @@ def test_ingest_writes_commentary_and_media(app_config) -> None:
     assert pick["tweet"]["avatar"] == "https://example.test/karpathy.jpg"
 
     app = create_app(app_config, Secrets(), database=database)
-    with TestClient(app) as client:
+    with authed_client(app) as client:
         page = client.get("/")
         assert page.status_code == 200
         assert "This is the kind of AI post" in page.text
@@ -56,7 +58,7 @@ def test_today_renders_open_on_x_and_media_gallery(app_config) -> None:
         now=datetime(2026, 8, 26, 18, 0, tzinfo=UTC),
     )
     app = create_app(app_config, Secrets(), database=database)
-    with TestClient(app) as client:
+    with authed_client(app) as client:
         page = client.get("/")
         assert page.status_code == 200
         assert "Open on X" in page.text
@@ -111,7 +113,7 @@ def test_today_dedupes_prefix_commentary(app_config, tmp_path: Path) -> None:
         now=datetime(2026, 8, 27, 18, 0, tzinfo=UTC),
     )
     app = create_app(app_config, Secrets(), database=database)
-    with TestClient(app) as client:
+    with authed_client(app) as client:
         page = client.get("/")
         assert page.status_code == 200
         assert why in page.text

@@ -5,6 +5,8 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from tests.web_auth_helpers import authed_client
+
 from periscope.config import Secrets
 from periscope.db import Database
 from periscope.jobs.ingest import run_ingest
@@ -83,7 +85,7 @@ def test_today_and_archive_html_contain_follow_button(app_config) -> None:
         now=datetime(2026, 9, 1, 18, 0, tzinfo=UTC),
     )
     app = create_app(app_config, Secrets(), database=database)
-    with TestClient(app) as client:
+    with authed_client(app) as client:
         today = client.get("/")
         assert today.status_code == 200
         assert "/follow-queue" in today.text

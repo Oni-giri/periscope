@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en" data-theme="light" data-accent="red">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>{{ title }} | Periscope</title>
+  <link rel="icon" href="{{ url_for('static', path='favicon.svg') }}" type="image/svg+xml">
+  <link rel="stylesheet" href="{{ url_for('static', path='periscope.css') }}?v=web-auth-v1">
+  <script src="{{ url_for('static', path='theme.js') }}"></script>
+</head>
+<body class="auth-body">
+  <main class="auth-shell">
+    <section class="auth-card">
+      <div class="auth-brand">
+        <strong>Periscope</strong>
+        <span>Log in</span>
+      </div>
+      <p class="muted-copy">Enter the web password for this instance.</p>
+      {% if error %}<p class="form-error" role="alert">{{ error }}</p>{% endif %}
+      <form class="auth-form" method="post" action="/auth/login" autocomplete="off">
+        <input type="hidden" name="next" value="{{ next_path }}">
+        <label>
+          <span>Password</span>
+          <input type="password" name="password" required autofocus autocomplete="current-password">
+        </label>
+        <button class="button" type="submit">Log in</button>
+      </form>
+    </section>
+  </main>
+</body>
+</html>

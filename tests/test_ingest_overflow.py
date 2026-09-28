@@ -6,6 +6,8 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from tests.web_auth_helpers import authed_client
+
 from periscope.config import Secrets
 from periscope.db import Database
 from periscope.jobs.ingest import run_ingest
@@ -102,7 +104,7 @@ def test_overflow_feed_shows_leftover_not_empty_state(app_config, tmp_path: Path
     assert result.fetch_id is not None
 
     app = create_app(app_config, Secrets(), database=database)
-    with TestClient(app) as client:
+    with authed_client(app) as client:
         page = client.get("/feed")
         assert page.status_code == 200
         assert "@leftover_alice" in page.text
@@ -187,7 +189,7 @@ def test_reingest_preserves_assembled_at_keeps_feed(app_config, tmp_path: Path) 
     )
 
     app = create_app(app_config, Secrets(), database=database)
-    with TestClient(app) as client:
+    with authed_client(app) as client:
         page = client.get("/feed")
         assert page.status_code == 200
         assert "@leftover_alice" in page.text

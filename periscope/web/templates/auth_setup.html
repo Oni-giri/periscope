@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en" data-theme="light" data-accent="red">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>{{ title }} | Periscope</title>
+  <link rel="icon" href="{{ url_for('static', path='favicon.svg') }}" type="image/svg+xml">
+  <link rel="stylesheet" href="{{ url_for('static', path='periscope.css') }}?v=web-auth-v1">
+  <script src="{{ url_for('static', path='theme.js') }}"></script>
+</head>
+<body class="auth-body">
+  <main class="auth-shell">
+    <section class="auth-card">
+      <div class="auth-brand">
+        <strong>Periscope</strong>
+        <span>Create a web password</span>
+      </div>
+      <p class="muted-copy">First visit on this instance. Choose a password to lock the UI. Other browsers will need it to connect.</p>
+      {% if error %}<p class="form-error" role="alert">{{ error }}</p>{% endif %}
+      <form class="auth-form" method="post" action="/auth/setup" autocomplete="off">
+        <label>
+          <span>Password</span>
+          <input type="password" name="password" required minlength="8" autofocus autocomplete="new-password">
+        </label>
+        <label>
+          <span>Confirm password</span>
+          <input type="password" name="confirm" required minlength="8" autocomplete="new-password">
+        </label>
+        <button class="button" type="submit">Create password</button>
+      </form>
+    </section>
+  </main>
+</body>
+</html>

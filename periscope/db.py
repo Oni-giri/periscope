@@ -429,10 +429,17 @@ class Database:
                     (handle, now),
                 )
             for topic in config.topics:
+                existing = connection.execute(
+                    "SELECT name FROM topics WHERE lower(name) = lower(?) LIMIT 1",
+                    (topic.name,),
+                ).fetchone()
+                if existing is not None:
+                    continue
                 connection.execute(
-                    "INSERT OR IGNORE INTO topics(name, min_faves, decay_weight) VALUES (?, ?, ?)",
+                    "INSERT INTO topics(name, min_faves, decay_weight) VALUES (?, ?, ?)",
                     (topic.name, topic.min_faves, topic.decay_weight),
                 )
+            self._dedupe_topics_casefold(connection)
             flags = {
                 "x_is_configured": secrets.x_configured,
                 "anthropic_is_configured": secrets.anthropic_configured,
@@ -1727,12 +1734,65 @@ class Database:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    @staticmethod
+    def _dedupe_topics_casefold(connection: Any) -> None:
+        """Collapse case-only duplicate topic names (keep preferred spelling)."""
+        rows = connection.execute(
+            "SELECT name, min_faves, decay_weight FROM topics ORDER BY name COLLATE NOCASE"
+        ).fetchall()
+        winners: dict[str, tuple[str, int, float]] = {}
+        for row in rows:
+            name = str(row["name"] if hasattr(row, "keys") else row[0])
+            min_faves = int(row["min_faves"] if hasattr(row, "keys") else row[1])
+            decay = float(row["decay_weight"] if hasattr(row, "keys") else row[2])
+            key = name.casefold()
+            if key not in winners:
+                winners[key] = (name, min_faves, decay)
+                continue
+            prev_name, prev_faves, prev_decay = winners[key]
+            # Prefer Title-ish spellings (more uppercase) when colliding; keep stronger thresholds.
+            prefer_new = sum(1 for c in name if c.isupper()) > sum(
+                1 for c in prev_name if c.isupper()
+            )
+            winners[key] = (
+                name if prefer_new else prev_name,
+                max(prev_faves, min_faves),
+                max(prev_decay, decay),
+            )
+        if len(winners) == len(rows):
+            return
+        connection.execute("DELETE FROM topics")
+        connection.executemany(
+            "INSERT INTO topics(name, min_faves, decay_weight) VALUES (?, ?, ?)",
+            [
+                (name, min_faves, max(0.5, min(decay, 1.0)))
+                for name, min_faves, decay in winners.values()
+            ],
+        )
+
     def replace_topics(self, topics: Sequence[Mapping[str, Any]]) -> None:
-        cleaned = []
+        cleaned: list[tuple[str, int, float]] = []
+        seen: set[str] = set()
         for topic in topics:
             name = str(topic.get("name", "")).strip()
             if not name:
                 continue
+            key = name.casefold()
+            if key in seen:
+                # Merge thresholds onto the kept spelling.
+                for i, (kept, faves, decay) in enumerate(cleaned):
+                    if kept.casefold() == key:
+                        cleaned[i] = (
+                            kept,
+                            max(faves, max(0, int(topic.get("min_faves", 0)))),
+                            max(
+                                decay,
+                                max(0.5, min(float(topic.get("decay_weight", 1.0)), 1.0)),
+                            ),
+                        )
+                        break
+                continue
+            seen.add(key)
             cleaned.append(
                 (
                     name,
@@ -1767,12 +1827,21 @@ class Database:
         month = today.strftime("%Y-%m")
         with self.connect() as connection:
             today_row = connection.execute(
-                "SELECT COALESCE(SUM(usd), 0) AS usd FROM llm_spend WHERE date = ?",
+                "SELECT COALESCE(SUM(usd), 0) AS usd, "
+                "COALESCE(SUM(input_tokens), 0) AS input_tokens, "
+                "COALESCE(SUM(output_tokens), 0) AS output_tokens "
+                "FROM llm_spend WHERE date = ?",
                 (today.isoformat(),),
             ).fetchone()
             month_row = connection.execute(
-                "SELECT COALESCE(SUM(usd), 0) AS usd FROM llm_spend WHERE date LIKE ?",
+                "SELECT COALESCE(SUM(usd), 0) AS usd, "
+                "COALESCE(SUM(input_tokens), 0) AS input_tokens, "
+                "COALESCE(SUM(output_tokens), 0) AS output_tokens "
+                "FROM llm_spend WHERE date LIKE ?",
                 (f"{month}-%",),
+            ).fetchone()
+            tracked = connection.execute(
+                "SELECT COUNT(*) AS count FROM llm_spend"
             ).fetchone()
             today_tweets = connection.execute(
                 "SELECT COUNT(*) AS count FROM tweets WHERE substr(created_at, 1, 10) = ?",
@@ -1782,6 +1851,11 @@ class Database:
         return {
             "today_usd": float(today_row["usd"]) if today_row else 0.0,
             "month_usd": float(month_row["usd"]) if month_row else 0.0,
+            "today_input_tokens": int(today_row["input_tokens"]) if today_row else 0,
+            "today_output_tokens": int(today_row["output_tokens"]) if today_row else 0,
+            "month_input_tokens": int(month_row["input_tokens"]) if month_row else 0,
+            "month_output_tokens": int(month_row["output_tokens"]) if month_row else 0,
+            "has_tracked_spend": bool(tracked and int(tracked["count"]) > 0),
             "tweets_today": int(today_tweets["count"]) if today_tweets else 0,
             "tweets_all": int(all_tweets["count"]) if all_tweets else 0,
             "database_bytes": self.path.stat().st_size if self.path.exists() else 0,

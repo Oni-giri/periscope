@@ -24,6 +24,34 @@ ENV_PATH = Path(
 )
 
 
+
+def resolve_model(explicit: str | None = None) -> str:
+    """CLI/env/settings/default model for OpenRouter curator calls."""
+    if explicit and str(explicit).strip():
+        return str(explicit).strip()
+    env = (
+        os.environ.get("OPENROUTER_MODEL", "").strip()
+        or os.environ.get("PERISCOPE_LLM_MODEL", "").strip()
+    )
+    if env:
+        return env
+    for folder in _data_dirs():
+        db_path = folder / "periscope.db"
+        if not db_path.exists():
+            continue
+        try:
+            with sqlite3.connect(db_path) as connection:
+                row = connection.execute(
+                    "SELECT value FROM settings WHERE key = ? LIMIT 1",
+                    ("llm.model",),
+                ).fetchone()
+            if row and str(row[0]).strip():
+                return str(row[0]).strip()
+        except Exception:  # noqa: BLE001 - fall through
+            continue
+    return DEFAULT_MODEL
+
+
 def normalize_openrouter_base(value: str | None = None) -> str:
     """Return an OpenRouter-compatible API root (no /chat/completions suffix)."""
 
@@ -383,6 +411,70 @@ def batches(items: list, n: int):
         yield items[i : i + n]
 
 
+
+def _openrouter_usage_usd(body: dict, model: str) -> tuple[int, int, float]:
+    """Extract token counts and USD cost from an OpenRouter chat response."""
+    usage = body.get("usage") if isinstance(body, dict) else None
+    if not isinstance(usage, dict):
+        usage = {}
+    input_tokens = int(
+        usage.get("prompt_tokens")
+        or usage.get("input_tokens")
+        or 0
+    )
+    output_tokens = int(
+        usage.get("completion_tokens")
+        or usage.get("output_tokens")
+        or 0
+    )
+    usd = 0.0
+    for key in ("cost", "total_cost", "native_tokens_cost"):
+        raw = usage.get(key)
+        if raw is None:
+            continue
+        try:
+            usd = float(raw)
+            break
+        except (TypeError, ValueError):
+            continue
+    # Some responses put cost on the root.
+    if usd <= 0 and isinstance(body, dict):
+        for key in ("cost", "total_cost"):
+            raw = body.get(key)
+            if raw is None:
+                continue
+            try:
+                usd = float(raw)
+                break
+            except (TypeError, ValueError):
+                continue
+    return input_tokens, output_tokens, max(0.0, usd)
+
+
+def record_openrouter_usage(body: dict, model: str) -> None:
+    """Best-effort write of OpenRouter usage into periscope.db llm_spend."""
+    input_tokens, output_tokens, usd = _openrouter_usage_usd(body, model)
+    if input_tokens <= 0 and output_tokens <= 0 and usd <= 0:
+        return
+    for folder in _data_dirs():
+        db_path = folder / "periscope.db"
+        if not db_path.exists():
+            continue
+        try:
+            from periscope.db import Database
+
+            Database(db_path).record_llm_spend(
+                model=str(model or "openrouter"),
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                usd=usd,
+            )
+            return
+        except Exception as exc:  # noqa: BLE001 - spend must never break curation
+            print(f"llm_spend record soft-fail: {exc}", flush=True)
+            return
+
+
 def call_openrouter(
     client: httpx.Client,
     key: str,
@@ -418,6 +510,7 @@ def call_openrouter(
     )
     r.raise_for_status()
     body = r.json()
+    record_openrouter_usage(body, model)
     content = body["choices"][0]["message"]["content"]
     if isinstance(content, list):
         content = "".join(
@@ -433,11 +526,12 @@ def call_openrouter(
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--in-dir", type=Path, default=Path("data/x-dumps"))
-    p.add_argument("--model", default=DEFAULT_MODEL)
+    p.add_argument("--model", default=None, help="OpenRouter model id (default: settings/env/built-in)")
     p.add_argument("--batch-size", type=int, default=40)
     p.add_argument("--min-score", type=int, default=6)
     p.add_argument("--max-keep", type=int, default=40)
     args = p.parse_args()
+    args.model = resolve_model(args.model)
 
     load_dotenv(ENV_PATH)
     load_dotenv(Path(".env"))

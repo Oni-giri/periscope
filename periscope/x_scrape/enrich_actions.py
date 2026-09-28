@@ -471,6 +471,9 @@ def _call_openrouter(key: str, model: str, compact_picks: list[dict[str, Any]]) 
         )
         response.raise_for_status()
         body = response.json()
+    from periscope.x_scrape.curate_feeds import record_openrouter_usage
+
+    record_openrouter_usage(body, model)
     content = body["choices"][0]["message"]["content"]
     if isinstance(content, list):
         content = "".join(
@@ -525,9 +528,11 @@ def enrich_file(
 
 
 def main() -> int:
+    from periscope.x_scrape.curate_feeds import resolve_model
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--digest", type=Path, required=True)
-    parser.add_argument("--model", default=DEFAULT_MODEL)
+    parser.add_argument("--model", default=None, help="OpenRouter model id (default: settings/env/built-in)")
     parser.add_argument(
         "--llm",
         action=argparse.BooleanOptionalAction,
@@ -535,6 +540,7 @@ def main() -> int:
         help="Attempt OpenRouter enrichment (soft-fail without key)",
     )
     args = parser.parse_args()
+    args.model = resolve_model(args.model)
     if not args.digest.is_file():
         print(f"missing digest: {args.digest}", flush=True)
         return 1

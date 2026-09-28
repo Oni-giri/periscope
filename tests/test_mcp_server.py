@@ -6,6 +6,8 @@ from datetime import UTC, date, datetime
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.web_auth_helpers import authed_client
+
 from periscope.config import Secrets
 from periscope.db import Database
 from periscope.jobs.daily import run_daily
@@ -132,7 +134,7 @@ def test_official_mcp_registration_and_http_mount(app_config) -> None:
     assert structured_health["status"] == "ok"
 
     app = create_app(app_config, Secrets(), database=database)
-    with TestClient(app) as client:
+    with authed_client(app) as client:
         initialized = client.post(
             "/mcp",
             headers={

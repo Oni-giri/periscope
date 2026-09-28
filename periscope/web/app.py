@@ -26,8 +26,10 @@ from periscope.web.context import (
     date_heading,
     md_bold,
 )
+from periscope.web.auth import AuthMiddleware
 from periscope.web.routes import (
     archive,
+    auth,
     cluster_detail,
     discovery,
     feed,
@@ -143,7 +145,10 @@ def create_app(
             name="media",
         )
     app.mount("/mcp", mcp_server.streamable_http_app(), name="mcp")
+    # Last added = outermost in Starlette: AuthMiddleware runs first on the way in.
     app.add_middleware(ResponseHeadersMiddleware)
+    app.add_middleware(AuthMiddleware)
+    app.include_router(auth.router)
     app.include_router(today.router)
     app.include_router(feed.router)
     app.include_router(archive.router)

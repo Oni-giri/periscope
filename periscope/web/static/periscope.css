@@ -41,6 +41,7 @@
 html {
   background: var(--bg);
   scroll-behavior: auto;
+  overflow-x: clip;
 }
 
 body {
@@ -51,6 +52,7 @@ body {
   font-size: 15px;
   line-height: 1.48;
   -webkit-font-smoothing: antialiased;
+  overflow-x: clip;
 }
 
 button,
@@ -510,6 +512,7 @@ img.avatar,
 
 .pick-body {
   min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .pick-header {
@@ -627,12 +630,13 @@ img.avatar,
 }
 
 .pick-body blockquote {
-  max-width: 60ch;
+  max-width: min(60ch, 100%);
   margin: 0;
   padding-left: 16px;
   border-left: 2px solid var(--rule-2);
   font-style: normal;
   line-height: 1.58;
+  overflow-wrap: anywhere;
 }
 
 .pick-reason {
@@ -1038,6 +1042,30 @@ input::placeholder {
   text-decoration: none;
 }
 
+
+/* Keep media and wide children inside the viewport */
+img,
+video,
+iframe {
+  max-width: 100%;
+}
+
+.page,
+.main,
+.app-shell,
+.sidebar {
+  max-width: 100%;
+}
+
+.thread-post p,
+.feed-post,
+.story-body,
+.candidate-body,
+.nugget-card,
+.nugget-row {
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 900px) {
   .app-shell {
     flex-direction: column;
@@ -1048,43 +1076,33 @@ input::placeholder {
     flex: 0 0 auto;
     flex-flow: row wrap;
     align-items: center;
+    gap: 0;
     width: 100%;
+    max-width: 100%;
     height: auto;
-    padding: 10px 12px;
+    padding: 10px 12px 0;
     border-right: 0;
     border-bottom: 1px solid var(--rule);
   }
 
   .brand {
-    padding: 0 16px 0 8px;
+    order: 1;
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0 8px 8px 4px;
   }
 
   .brand span {
     display: none;
   }
 
-  .nav-list {
-    flex: 1;
-    flex-direction: row;
-    overflow-x: auto;
-  }
-
-  .nav-link {
-    flex: 0 0 auto;
-    min-height: 42px;
-    padding: 8px 10px;
-    border-bottom: 2px solid transparent;
-    border-left: 0;
-  }
-
-  .nav-link.is-active {
-    border-bottom-color: var(--accent);
-    border-left: 0;
-  }
-
+  /* Sit beside brand on row 1 (DOM order is brand, nav-list, nav-meta) */
   .nav-meta {
+    order: 2;
+    flex: 0 0 auto;
     margin: 0 0 0 auto;
-    padding: 0 6px 0 12px;
+    padding: 0 4px 8px 8px;
+    align-items: flex-end;
   }
 
   .nav-meta > div:not(.status-line, .appearance-controls) {
@@ -1095,8 +1113,40 @@ input::placeholder {
     margin-top: 2px;
   }
 
+  /* Full-width second row so all nav links are reachable */
+  .nav-list {
+    order: 3;
+    flex: 1 1 100%;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 0;
+    box-sizing: border-box;
+    width: calc(100% + 24px);
+    max-width: none;
+    margin: 0 -12px;
+    padding: 0 8px;
+    border-top: 1px solid var(--rule);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+
+  .nav-link {
+    flex: 0 0 auto;
+    min-height: 42px;
+    padding: 8px 12px;
+    border-bottom: 2px solid transparent;
+    border-left: 0;
+  }
+
+  .nav-link.is-active {
+    border-bottom-color: var(--accent);
+    border-left: 0;
+  }
+
   .page {
     padding: 32px 28px 64px;
+    max-width: 100%;
   }
 
   .archive-filters {
@@ -1106,25 +1156,23 @@ input::placeholder {
 
 @media (max-width: 640px) {
   .sidebar {
-    align-items: stretch;
+    align-items: center;
+    padding: 8px 12px 0;
   }
 
   .brand {
     align-self: center;
-  }
-
-  .nav-list {
-    order: 3;
-    width: 100%;
-  }
-
-  .nav-link {
-    padding-inline: 9px;
-    font-size: 13px;
+    padding: 0 8px 6px 2px;
   }
 
   .nav-meta {
     align-items: flex-end;
+    padding: 0 2px 6px 6px;
+  }
+
+  .nav-link {
+    padding-inline: 10px;
+    font-size: 13px;
   }
 
   .appearance-controls {
@@ -1561,6 +1609,18 @@ input::placeholder {
 
 .reading-actions {
   margin: 8px 0 18px;
+}
+
+.reading-actions-sticky {
+  position: sticky;
+  bottom: 12px;
+  z-index: 5;
+  margin: 18px 0 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(8px);
 }
 
 .validate-report {
@@ -2192,4 +2252,93 @@ input::placeholder {
   letter-spacing: 0;
   text-transform: none;
   line-height: 1.45;
+}
+
+/* —— Web auth (standalone setup / login) —— */
+.auth-body {
+  min-height: 100vh;
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.auth-shell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 32px 16px;
+}
+
+.auth-card {
+  width: min(100%, 400px);
+  padding: 28px 28px 32px;
+  border: 1px solid var(--rule);
+  background: var(--bg);
+  box-shadow: 0 1px 0 var(--rule);
+}
+
+.auth-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 12px;
+}
+
+.auth-brand strong {
+  font-size: 18px;
+  letter-spacing: -0.02em;
+}
+
+.auth-brand span {
+  color: var(--fg-2);
+  font-size: 13px;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.auth-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.auth-form label > span {
+  color: var(--fg-2);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.auth-form input[type="password"] {
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid var(--rule-2);
+  background: var(--inset);
+  color: var(--fg);
+  font: inherit;
+}
+
+.auth-form input[type="password"]:focus {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.auth-form .button {
+  margin-top: 4px;
+  width: 100%;
+}
+
+.nav-meta .logout-form {
+  margin: 8px 0 0;
+}
+
+@media (max-width: 900px) {
+  .nav-meta .logout-form {
+    margin: 4px 0 0;
+  }
 }

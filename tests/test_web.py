@@ -5,6 +5,8 @@ from datetime import UTC, date, datetime
 
 from fastapi.testclient import TestClient
 
+from tests.web_auth_helpers import authed_client
+
 from periscope.config import Secrets
 from periscope.db import Database
 from periscope.jobs.daily import run_daily
@@ -51,7 +53,7 @@ def test_core_web_routes_and_htmx_keep(app_config, timeline_fixture) -> None:
     database = _seed_web_state(app_config, timeline_fixture)
     app = create_app(app_config, Secrets(), database=database)
 
-    with TestClient(app) as client:
+    with authed_client(app) as client:
         home = client.get("/")
         assert home.status_code == 200
         assert "Thursday, 16 July 2026" in home.text
@@ -103,7 +105,7 @@ def test_core_web_routes_and_htmx_keep(app_config, timeline_fixture) -> None:
 def test_empty_web_state(app_config) -> None:
     app = create_app(app_config, Secrets())
 
-    with TestClient(app) as client:
+    with authed_client(app) as client:
         home = client.get("/")
         assert home.status_code == 200
         assert "No digest yet" in home.text

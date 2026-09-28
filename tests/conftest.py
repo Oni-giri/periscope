@@ -26,3 +26,5 @@ def app_config(tmp_path: Path) -> AppConfig:
 @pytest.fixture
 def timeline_fixture() -> Path:
     return Path(__file__).parent / "fixtures" / "timeline.json"
+
+from tests.web_auth_helpers import TEST_WEB_PASSWORD, authed_client, ensure_web_auth  # noqa: E402,F401

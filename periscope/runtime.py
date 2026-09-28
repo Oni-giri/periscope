@@ -77,7 +77,11 @@ def effective_config(config: AppConfig, database: Database) -> AppConfig:
         )
         for item in db_topics
     )
-    return replace(config, schedule=schedule, picks=picks, topics=topics)
+    model_name = str(database.get_settings().get("llm.model", "")).strip()
+    models = config.models
+    if model_name:
+        models = replace(models, cheap=model_name, quality=model_name)
+    return replace(config, schedule=schedule, picks=picks, topics=topics, models=models)
 
 
 def save_schedule_settings(
@@ -187,6 +191,61 @@ def ui_settings(database: Database) -> dict[str, str | int]:
         "feed_max_posts": feed_max,
         "archive_default_filter": archive_filter,
     }
+
+
+
+LLM_MODEL_SETTING = "llm.model"
+
+
+def llm_model(database: Database, *, fallback: str | None = None) -> str:
+    """Return the configured OpenAI-compatible model id for curator/enrich."""
+    from periscope.x_scrape.curate_feeds import DEFAULT_MODEL
+
+    values = database.get_settings()
+    stored = str(values.get(LLM_MODEL_SETTING, "")).strip()
+    if stored:
+        return stored
+    env = (
+        os.environ.get("OPENROUTER_MODEL", "").strip()
+        or os.environ.get("PERISCOPE_LLM_MODEL", "").strip()
+    )
+    if env:
+        return env
+    if fallback and str(fallback).strip():
+        return str(fallback).strip()
+    return DEFAULT_MODEL
+
+
+def save_llm_model(database: Database, model: str) -> str:
+    """Persist model id to settings (and return the cleaned value)."""
+    clean = str(model or "").strip()
+    if not clean:
+        raise RuntimeSettingsError("Model cannot be empty")
+    if any(ch.isspace() for ch in clean):
+        raise RuntimeSettingsError("Model id cannot contain spaces")
+    if len(clean) > 200:
+        raise RuntimeSettingsError("Model id is too long")
+    database.update_settings({LLM_MODEL_SETTING: clean})
+    return clean
+
+
+def sync_config_models(config: AppConfig, model: str) -> None:
+    """Keep config.toml [models] cheap/quality aligned with the Connections model."""
+    path = Path(
+        os.environ.get("PERISCOPE_CONFIG")
+        or Path(config.data_dir) / "config.toml"
+    ).expanduser()
+    if not path.exists():
+        return
+    text = path.read_text(encoding="utf-8")
+    updated = text
+    for key in ("cheap", "quality"):
+        pattern = rf'(?m)^({key}\s*=\s*)"[^"]*"'
+        if re.search(pattern, updated):
+            updated = re.sub(pattern, rf'\1"{model}"', updated, count=1)
+    if updated != text:
+        path.write_text(updated, encoding="utf-8")
+
 
 
 def secrets_path(config: AppConfig) -> Path:

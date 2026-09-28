@@ -27,6 +27,9 @@
             </select>
           </label>
         </div>
+        <div class="form-actions">
+          <button class="button" type="submit">Save reading settings</button>
+        </div>
       </section>
 
       <section class="settings-section">
@@ -34,6 +37,7 @@
         <p class="muted-copy">Required. One topic per line (commas also work). Empty list fails curation — there is no built-in fallback. Sample placeholder: ai, latvia, crypto, tools, science, business.</p>
         <textarea name="interests" rows="8" placeholder="ai&#10;latvia&#10;crypto&#10;tools&#10;science&#10;business">{{ interests_text }}</textarea>
         <div class="form-actions">
+          <button class="button" type="submit">Save reading settings</button>
           <button class="button button-muted" type="button" hx-post="/settings/reading/validate" hx-include="#reading-form" hx-target="#settings-panel" hx-swap="outerHTML">Validate interests</button>
         </div>
         {% if validation %}
@@ -71,7 +75,7 @@
         </div>
       </section>
 
-      <div class="form-actions reading-actions">
+      <div class="form-actions reading-actions reading-actions-sticky">
         <button class="button" type="submit">Save reading settings</button>
       </div>
     </form>
@@ -141,11 +145,37 @@
 
   {% elif tab == "system" %}
     <section class="settings-section">
+      <h2 class="section-label">Web password</h2>
+      {% if web_password_set %}
+        <p class="muted-copy">Web password is set. Other browsers need it to open this UI.</p>
+        <form class="settings-form" method="post" action="/settings/web-password" hx-post="/settings/web-password" hx-target="#settings-panel" hx-swap="outerHTML">
+          <div class="form-grid">
+            <label><span>Current password</span><input type="password" name="old_password" required autocomplete="current-password"></label>
+            <label><span>New password</span><input type="password" name="new_password" required minlength="8" autocomplete="new-password"></label>
+            <label class="span-2"><span>Confirm new password</span><input type="password" name="confirm_password" required minlength="8" autocomplete="new-password"></label>
+          </div>
+          <div class="form-actions">
+            <button class="button" type="submit">Change password</button>
+          </div>
+        </form>
+      {% else %}
+        <p class="muted-copy">No web password yet. Open Periscope in a browser to create one on first visit.</p>
+      {% endif %}
+    </section>
+    <section class="settings-section">
       <div class="health-grid">
         <div><span>Session cookie</span><strong>{% if health.cookie.ok %}OK{% else %}Needs attention{% endif %}</strong></div>
         <div><span>Last fetch</span><strong>{% if health.last_fetch %}{{ health.last_fetch.started_at|absolute_time }}{% else %}Never{% endif %}</strong></div>
         <div><span>Tweets today</span><strong>{{ spend.tweets_today }}</strong><small>{{ spend.tweets_all }} all time</small></div>
-        <div><span>LLM spend</span><strong>&#36;{{ "%.2f"|format(spend.today_usd) }}</strong><small>&#36;{{ "%.2f"|format(spend.month_usd) }} this month</small></div>
+        <div>
+          <span>LLM spend</span>
+          <strong>&#36;{{ "%.2f"|format(spend.today_usd) }}</strong>
+          {% if spend.has_tracked_spend %}
+            <small>&#36;{{ "%.2f"|format(spend.month_usd) }} this month · {{ spend.month_input_tokens }} in / {{ spend.month_output_tokens }} out</small>
+          {% else %}
+            <small>No OpenRouter calls recorded yet (will fill after the next curator/enrich run)</small>
+          {% endif %}
+        </div>
         <div><span>Storage</span><strong>{{ "%.1f"|format(spend.database_bytes / 1048576) }} MB</strong></div>
         <div><span>Scheduled jobs</span><strong>{{ jobs|length }}</strong></div>
         <div><span>Follow queue</span><strong>{{ pending_follows }} pending</strong></div>
@@ -168,6 +198,49 @@
     </section>
 
   {% elif tab == "connections" %}
+    <section class="settings-section">
+      <h2 class="section-label">Twitter / X login</h2>
+      <p class="muted-copy"><strong>You do not need an API token for the daily magazine.</strong> The scraper reuses a dedicated Chromium profile (cookies on disk). Upload a clean profile from another machine, or sign in on this host.</p>
+      <div class="health-grid">
+        <div>
+          <span>Login status</span>
+          <strong>{% if chrome_profile_ready %}Ready{% else %}Needs sign-in{% endif %}</strong>
+          <small>Profile folder: <code>{{ chrome_profile }}</code></small>
+        </div>
+        <div>
+          <span>Last uploaded</span>
+          {% if chrome_profile_uploaded_at %}
+          <strong>{{ chrome_profile_uploaded_at|absolute_datetime }}</strong>
+          <small>{% if chrome_profile_upload_name %}<code>{{ chrome_profile_upload_name }}</code>{% else %}via UI{% endif %}</small>
+          {% else %}
+          <strong>Never uploaded via UI</strong>
+          <small>May still have a local profile.</small>
+          {% endif %}
+        </div>
+      </div>
+      <h3 class="section-label">Upload Chrome profile</h3>
+      <p class="muted-copy">Create a fresh Chromium profile on another machine, sign in to X only, quit the browser, zip the profile folder, upload here. Replaces the existing profile on this server.</p>
+      <form class="settings-form" method="post" action="/settings/chrome-profile" enctype="multipart/form-data" hx-post="/settings/chrome-profile" hx-encoding="multipart/form-data" hx-target="#settings-panel" hx-swap="outerHTML">
+        <div class="form-grid">
+          <label class="span-2">
+            <span>Profile zip</span>
+            <input type="file" name="profile_zip" accept=".zip,application/zip" required>
+          </label>
+        </div>
+        <div class="form-actions reading-actions">
+          <button class="button" type="submit">Replace profile</button>
+        </div>
+      </form>
+      <details class="advanced-block">
+        <summary>Or sign in on this machine</summary>
+        <ol class="muted-copy setup-steps">
+          <li>Ask me (or open my desktop) and run the X scrape once with a visible browser.</li>
+          <li>When X shows the login page, sign in as usual in that window.</li>
+          <li>After you’re in, close it — the profile folder keeps the session. Morning/evening scrapes reuse it automatically.</li>
+        </ol>
+      </details>
+    </section>
+
     <form class="settings-form" method="post" action="/settings/credentials" hx-post="/settings/credentials" hx-target="#settings-panel" hx-swap="outerHTML">
       <section class="settings-section">
         <h2 class="section-label">LLM (OpenAI-compatible)</h2>
@@ -181,25 +254,12 @@
             <span>API key</span>
             <input type="password" name="openrouter_api_key" autocomplete="off" placeholder="{% if openrouter_configured %}Configured, enter to replace{% else %}Not configured{% endif %}">
           </label>
+          <label class="span-2">
+            <span>Model</span>
+            <input name="llm_model" value="{{ llm_model_id }}" placeholder="meta/muse-spark-1.3-contributor" autocomplete="off" spellcheck="false">
+          </label>
         </div>
-      </section>
-
-      <section class="settings-section">
-        <h2 class="section-label">Twitter / X login</h2>
-        <p class="muted-copy"><strong>You do not need an API token for the daily magazine.</strong> The scraper opens a dedicated Chromium browser on this computer, saves its cookies in a folder (the “Chrome profile”), and reuses that login next time — same idea as staying signed in on your laptop.</p>
-        <div class="health-grid">
-          <div>
-            <span>Login status</span>
-            <strong>{% if chrome_profile_ready %}Ready{% else %}Needs sign-in{% endif %}</strong>
-            <small>Profile folder: <code>{{ chrome_profile }}</code></small>
-          </div>
-        </div>
-        <ol class="muted-copy setup-steps">
-          <li>Ask me (or open my desktop) and run the X scrape once with a visible browser.</li>
-          <li>When X shows the login page, sign in as usual in that window.</li>
-          <li>After you’re in, close it — the profile folder keeps the session. Morning/evening scrapes reuse it automatically.</li>
-        </ol>
-        <p class="muted-copy">Skip the cookie fields below. Those are only for an old unused list-fetch path.</p>
+        <p class="muted-copy">OpenRouter model id for the scrape curator and enrich-actions pass (for example <code>meta/muse-spark-1.3-contributor</code>). Leave blank on save to keep the current value.</p>
         <details class="advanced-block">
           <summary>Advanced (unused): list-mode cookies</summary>
           <p class="muted-copy">Not used by the daily Playwright scrape. Leave blank.</p>
