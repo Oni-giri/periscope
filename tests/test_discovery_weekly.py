@@ -170,13 +170,17 @@ def test_weekly_job_and_discovery_review(app_config) -> None:
         assert first.week in weekly.text
         assert "Picks and keeps calibration" in weekly.text
 
+    # Rejection stamps wall-clock time; measure suppression from that, not the fixture date.
+    rejected_at = datetime.fromisoformat(
+        str(database.get_candidate("candidate_reject")["surfaced_at"]).replace("Z", "+00:00")
+    )
     assert not database.upsert_candidate(
         handle="candidate_reject",
         reason="Too soon",
         cofollow_count=4,
         overlap_pct=50,
         stats={},
-        surfaced_at=now + timedelta(days=89),
+        surfaced_at=rejected_at + timedelta(days=89),
     )
     assert database.upsert_candidate(
         handle="candidate_reject",
@@ -184,5 +188,5 @@ def test_weekly_job_and_discovery_review(app_config) -> None:
         cofollow_count=4,
         overlap_pct=50,
         stats={},
-        surfaced_at=now + timedelta(days=91),
+        surfaced_at=rejected_at + timedelta(days=91),
     )

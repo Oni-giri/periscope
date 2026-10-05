@@ -103,6 +103,22 @@ def follow_handle_filter(action: Any, fallback: str = "") -> str:
     )
 
 
+def resolve_follow_account(
+    database: Any, *, account_hint: str | None = None, topic: str | None = None
+) -> str:
+    """Route a follow to the topic account whose topic matches (or that surfaced
+    the post); otherwise the main account. Disabled/unknown accounts → main."""
+
+    from periscope.x_accounts import MAIN_SLUG, XAccount, route_follow
+
+    try:
+        accounts = [XAccount.from_row(row) for row in database.list_x_accounts()]
+    except Exception:  # noqa: BLE001 - pre-migration DB
+        return MAIN_SLUG
+    hint = str(account_hint or "").strip().lower()
+    return route_follow(accounts, topic=topic, source_accounts=[hint] if hint else None)
+
+
 @router.post("/follow-queue", name="queue_follow")
 async def queue_follow(
     request: Request,
@@ -111,16 +127,20 @@ async def queue_follow(
     url: str | None = Form(None),
     label: str | None = Form(None),
     source: str | None = Form("today"),
+    account: str | None = Form(None),
+    topic: str | None = Form(None),
 ):
     resolved = parse_follow_handle(url=url, label=label, fallback=handle)
     if not resolved:
         raise HTTPException(status_code=400, detail="Follow handle is required")
     database = database_for(request)
+    owner = resolve_follow_account(database, account_hint=account, topic=topic)
     try:
         database.enqueue_follow(
             resolved,
             tweet_id=tweet_id or None,
             source=source or "today",
+            account=owner,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

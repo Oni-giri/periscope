@@ -42,6 +42,13 @@ def convert(
     tweets: list[dict] = []
     picks: list[dict] = []
     by_topic: dict[str, list[str]] = defaultdict(list)
+    # Account chips only once a topic account contributed (single-account
+    # digests stay exactly as before).
+    multi_account = any(
+        any(s != "main" for s in (k.get("source_accounts") or [])) or k.get("account") not in
+        (None, "", "main")
+        for k in keepers
+    )
     for keeper in keepers:
         sid = str(keeper["status_id"])
         curation = keeper.get("curation") or {}
@@ -76,6 +83,20 @@ def convert(
                 pick[flag] = bool(curation[flag])
         if curation.get("nugget_why"):
             pick["nugget_why"] = str(curation["nugget_why"])
+        pick["topic"] = topic
+        if multi_account:
+            sources = list(keeper.get("source_accounts") or ["main"])
+            labels = list(keeper.get("source_account_labels") or [])
+            owner = str(keeper.get("account") or sources[0])
+            owner_label = str(keeper.get("account_label") or owner)
+            pick["account"] = owner
+            pick["account_label"] = owner_label
+            pick["source_accounts"] = sources
+            pick["accounts"] = [
+                {"slug": slug, "label": labels[i] if i < len(labels) else slug}
+                for i, slug in enumerate(sources)
+            ]
+            tweet["source_accounts"] = sources
         enrich_pick_fields(
             pick,
             tweet={

@@ -57,8 +57,13 @@ def drain_pending(
     database: Database,
     *,
     limit: int = FOLLOW_CAP,
+    account: str | None = "main",
 ) -> list[dict[str, str]]:
-    pending = database.list_pending_follows()[: max(0, int(limit))]
+    """Follow pending handles for one X account (default ``main``).
+
+    Pass ``account=None`` to drain every queue with this page (legacy).
+    """
+    pending = database.list_pending_follows(account)[: max(0, int(limit))]
     if not pending:
         return []
     outcomes: list[dict[str, str]] = []
@@ -72,7 +77,8 @@ def drain_pending(
         except Exception as exc:  # noqa: BLE001
             status, error = "failed", f"{type(exc).__name__}: {exc}"[:500]
         database.mark_follow(handle, status, error=error)
-        print(f"queued-follow @{handle}: {status}", flush=True)
+        label = f" [{account}]" if account and account != "main" else ""
+        print(f"queued-follow{label} @{handle}: {status}", flush=True)
         outcomes.append({"handle": handle, "status": status})
     return outcomes
 
@@ -82,8 +88,13 @@ def drain_follow_queue(
     db_path: str | Path | None,
     *,
     limit: int = FOLLOW_CAP,
+    account: str | None = "main",
 ) -> list[dict[str, str]]:
-    """Open Periscope DB if present and follow pending handles. Never raises."""
+    """Open Periscope DB if present and follow pending handles. Never raises.
+
+    Only the given account's queue is drained (default ``main``) so topic-account
+    follows never happen on the main login.
+    """
 
     if db_path is None:
         print("queued-follow: no database path, skip", flush=True)
@@ -95,10 +106,10 @@ def drain_follow_queue(
     try:
         database = Database(path)
         database.initialize()
-        pending = database.list_pending_follows()
+        pending = database.list_pending_follows(account)
         if not pending:
             return []
-        return drain_pending(page, database, limit=limit)
+        return drain_pending(page, database, limit=limit, account=account)
     except Exception as exc:  # noqa: BLE001
         print(f"queued-follow: drain failed {exc}", flush=True)
         return []

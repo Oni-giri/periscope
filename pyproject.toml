@@ -39,6 +39,8 @@ periscope-curate = "periscope.x_scrape.curate_feeds:main"
 periscope-shortlist = "periscope.x_scrape.shortlist_to_digest:main"
 periscope-digest = "periscope.x_scrape.digest_pipeline:main"
 periscope-enrich = "periscope.x_scrape.enrich_actions:main"
+periscope-accounts-scrape = "periscope.x_scrape.account_scrape:main"
+periscope-account-actions = "periscope.x_scrape.account_actions:main"
 
 [build-system]
 requires = ["hatchling"]

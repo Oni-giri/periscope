@@ -2342,3 +2342,166 @@ iframe {
     margin: 4px 0 0;
   }
 }
+
+/* Topic X accounts (Settings → Accounts) */
+.xacct-list {
+  display: grid;
+  gap: 14px;
+  max-width: 760px;
+  margin-top: 18px;
+}
+
+.xacct-card {
+  padding: 16px;
+  border: 1px solid var(--rule);
+  background: var(--bg);
+}
+
+.xacct-card.is-disabled {
+  opacity: 0.7;
+}
+
+.xacct-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 14px;
+}
+
+.xacct-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  min-width: 0;
+}
+
+.xacct-title strong {
+  font-size: 17px;
+}
+
+.xacct-slug {
+  color: var(--fg-2);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.xacct-state {
+  padding: 1px 8px;
+  border: 1px solid var(--rule-2);
+  color: var(--fg-2);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.xacct-state.is-ok {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.xacct-state.is-error,
+.xacct-state.is-warn {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+.xacct-desc {
+  max-width: 64ch;
+  margin: 8px 0 0;
+  color: var(--fg);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.xacct-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 18px;
+  margin: 12px 0 0;
+}
+
+.xacct-meta > div {
+  min-width: 0;
+}
+
+.xacct-meta .span-all {
+  grid-column: 1 / -1;
+}
+
+.xacct-meta dt {
+  color: var(--fg-2);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.xacct-meta dd {
+  margin: 2px 0 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.xacct-meta code {
+  font-size: 12px;
+}
+
+.xacct-edit .settings-form {
+  padding-bottom: 8px;
+}
+
+.xacct-actions {
+  margin-top: 12px;
+}
+
+.button-danger {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+/* Today: account/topic chips */
+.account-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.account-chip {
+  padding: 1px 7px;
+  border: 1px solid var(--rule-2);
+  border-radius: 999px;
+  color: var(--fg-2);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.account-chip.is-owner:not(.is-main) {
+  border-color: var(--fg-2);
+  color: var(--fg);
+}
+
+@media (max-width: 680px) {
+  .xacct-card {
+    padding: 14px 12px;
+  }
+
+  .xacct-meta {
+    grid-template-columns: 1fr;
+  }
+
+  .xacct-actions .button {
+    flex: 1 1 0;
+  }
+
+  /* Five settings tabs fit a 390px viewport without hiding the last one. */
+  .settings-tabs a {
+    padding: 12px 9px;
+    font-size: 12px;
+  }
+}

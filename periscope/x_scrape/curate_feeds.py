@@ -371,11 +371,11 @@ def load_json(path: Path) -> list:
     return data if isinstance(data, list) else []
 
 
-def compact(post: dict, feed: str) -> dict:
+def compact(post: dict, feed: str, account_labels: dict[str, str] | None = None) -> dict:
     text = (post.get("text") or "").strip()
     if len(text) > 700:
         text = text[:700] + "…"
-    return {
+    item = {
         "status_id": str(post.get("status_id") or ""),
         "feed": feed,
         "author": post.get("author_handle") or "",
@@ -383,27 +383,109 @@ def compact(post: dict, feed: str) -> dict:
         "has_image": bool(post.get("image_urls")),
         "truncated": bool(post.get("is_truncated")),
     }
+    sources = [s for s in post.get("source_accounts") or [] if s]
+    if account_labels is not None and sources:
+        # Which of the reader's X accounts surfaced this post (topic signal).
+        item["accounts"] = [account_labels.get(s, s) for s in sources]
+    return item
 
 
-def gather(out_dir: Path) -> tuple[list[dict], dict[str, dict]]:
-    files = [
-        ("foryou", out_dir / "foryou.json"),
-        ("following", out_dir / "following.json"),
+def gather(
+    out_dir: Path,
+    *,
+    accounts: list[str] | None = None,
+    account_labels: dict[str, str] | None = None,
+) -> tuple[list[dict], dict[str, dict]]:
+    """Load main feeds plus topic-account dumps; dedupe keeping all source tags.
+
+    ``accounts`` limits which ``accounts/<slug>/following.json`` dumps are read
+    (None = every dump present). Main-account feeds are always first so their
+    post bodies win, matching the previous single-account behaviour.
+    """
+
+    from periscope.x_accounts import MAIN_SLUG, merge_sources
+
+    files: list[tuple[str, str, Path]] = [
+        ("foryou", MAIN_SLUG, out_dir / "foryou.json"),
+        ("following", MAIN_SLUG, out_dir / "following.json"),
     ]
     for p in sorted(out_dir.glob("timeline_*.json")):
-        files.append((p.stem.replace("timeline_", ""), p))
-    by_id: dict[str, dict] = {}
-    compact_posts: list[dict] = []
-    for feed, path in files:
-        for post in load_json(path):
-            sid = str(post.get("status_id") or "")
-            if not sid or sid in by_id:
-                continue
-            post = dict(post)
-            post["feed"] = post.get("feed") or feed
-            by_id[sid] = post
-            compact_posts.append(compact(post, post["feed"]))
+        files.append((p.stem.replace("timeline_", ""), MAIN_SLUG, p))
+    allowed = None if accounts is None else set(accounts)
+    for p in sorted((out_dir / "accounts").glob("*/following.json")):
+        slug = p.parent.name
+        if slug == MAIN_SLUG or (allowed is not None and slug not in allowed):
+            continue
+        files.append(("following", slug, p))
+    ordered, by_id = merge_sources((feed, acct, load_json(path)) for feed, acct, path in files)
+    has_topic = any(
+        any(s != MAIN_SLUG for s in post.get("source_accounts") or []) for post in ordered
+    )
+    labels = account_labels if (has_topic and account_labels is not None) else None
+    if has_topic and labels is None:
+        labels = {}
+    compact_posts = [compact(post, post["feed"], labels) for post in ordered]
     return compact_posts, by_id
+
+
+def load_x_accounts(db_path: Path | None = None) -> list:
+    """Enabled X accounts from periscope.db (empty when the table is missing)."""
+
+    from periscope.x_accounts import XAccount
+
+    candidates: list[Path] = []
+    if db_path is not None:
+        candidates.append(Path(db_path))
+    for folder in _data_dirs():
+        candidates.append(folder / "periscope.db")
+    for candidate in candidates:
+        if not candidate.exists():
+            continue
+        try:
+            with sqlite3.connect(candidate) as connection:
+                connection.row_factory = sqlite3.Row
+                rows = connection.execute(
+                    "SELECT * FROM x_accounts WHERE enabled = 1"
+                ).fetchall()
+            return [XAccount.from_row(dict(row)) for row in rows]
+        except sqlite3.Error:
+            return []
+    return []
+
+
+def accounts_prompt_section(accounts: list) -> str:
+    """Extra curator context describing the reader's topic accounts."""
+
+    topical = [a for a in accounts if not a.is_main]
+    if not topical:
+        return ""
+    lines = [
+        "",
+        "The reader runs several X accounts. Each post lists `accounts`: which of them "
+        "surfaced it (\"Main\" is the mixed personal account; the others only follow one "
+        "topic). A topic account surfacing a post is a strong hint for `topic`, but judge "
+        "the content itself.",
+        "Topic accounts:",
+    ]
+    for account in topical:
+        desc = f" — {account.description.strip()}" if account.description.strip() else ""
+        lines.append(f"- {account.label}{desc}")
+    return "\n".join(lines) + "\n"
+
+
+def tag_keeper_account(full: dict, accounts: list) -> None:
+    """Attach ``account`` (owner slug) and label to a judged post."""
+
+    from periscope.x_accounts import MAIN_SLUG, owner_account
+
+    sources = list(full.get("source_accounts") or [MAIN_SLUG])
+    topic = (full.get("curation") or {}).get("topic")
+    owner = owner_account(accounts, source_accounts=sources, topic=topic)
+    labels = {a.slug: a.label for a in accounts}
+    full["source_accounts"] = sources
+    full["account"] = owner
+    full["account_label"] = labels.get(owner, "Main" if owner == MAIN_SLUG else owner)
+    full["source_account_labels"] = [labels.get(s, s) for s in sources]
 
 
 def batches(items: list, n: int):
@@ -535,14 +617,25 @@ def main() -> int:
 
     load_dotenv(ENV_PATH)
     load_dotenv(Path(".env"))
+    x_accounts = load_x_accounts()
     try:
         interests = load_interest_topics()
-        system_prompt = build_system_prompt(interests)
+        # Topic accounts' labels join the topic enum so keepers can map to them.
+        for account in x_accounts:
+            if account.is_main:
+                continue
+            slug = interest_slug(account.label)
+            if slug and slug != "other" and slug not in interests:
+                interests.append(slug)
+        system_prompt = build_system_prompt(interests) + accounts_prompt_section(x_accounts)
         response_schema = build_schema(interests)
     except NoInterestsError as exc:
         print(str(exc), flush=True)
         return 2
     print(f"interests: {', '.join(interests)}", flush=True)
+    topic_slugs = [a.slug for a in x_accounts if not a.is_main]
+    if topic_slugs:
+        print(f"topic accounts: {', '.join(topic_slugs)}", flush=True)
     key = os.environ.get("OPENROUTER_API_KEY", "").strip()
     if not key:
         print(
@@ -551,7 +644,11 @@ def main() -> int:
         )
         return 2
 
-    posts, by_id = gather(args.in_dir)
+    posts, by_id = gather(
+        args.in_dir,
+        accounts=[a.slug for a in x_accounts],
+        account_labels={a.slug: a.label for a in x_accounts} or None,
+    )
     ads = [x for x in posts if by_id[x["status_id"]].get("is_ad")]
     work = [x for x in posts if not by_id[x["status_id"]].get("is_ad")]
     print(f"loaded {len(posts)} unique ({len(ads)} ads skipped locally)", flush=True)
@@ -600,6 +697,7 @@ def main() -> int:
             "why": j.get("why") or "",
             "skip_reason": j.get("skip_reason") or "",
         }
+        tag_keeper_account(full, x_accounts)
         if full["curation"]["keep"]:
             keepers.append(full)
         else:

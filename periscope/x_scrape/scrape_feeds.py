@@ -153,6 +153,13 @@ def collect(
     return list(by_id.values())
 
 
+def tag_source(posts: list[dict], account: str = "main") -> list[dict]:
+    """Stamp which X account surfaced each post (main scrape = ``main``)."""
+    for item in posts:
+        item.setdefault("source_account", account)
+    return posts
+
+
 def write_json(path: Path, payload) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
@@ -229,7 +236,7 @@ def main() -> int:
                 max_scrolls=args.max_scrolls,
                 stall_limit=8,
             )
-            write_json(args.out_dir / "foryou.json", posts)
+            write_json(args.out_dir / "foryou.json", tag_source(posts))
             meta["foryou"] = {
                 "unique_count": len(posts),
                 "ads": sum(1 for x in posts if x.get("is_ad")),
@@ -247,7 +254,7 @@ def main() -> int:
                 max_scrolls=max(args.max_scrolls, 180),
                 stall_limit=10,
             )
-            write_json(args.out_dir / "following.json", posts)
+            write_json(args.out_dir / "following.json", tag_source(posts))
             meta["following"] = {
                 "unique_count": len(posts),
                 "ads": sum(1 for x in posts if x.get("is_ad")),
@@ -278,7 +285,7 @@ def main() -> int:
                 )
                 for item in posts:
                     item["feed"] = slug
-                write_json(args.out_dir / f"timeline_{slug}.json", posts)
+                write_json(args.out_dir / f"timeline_{slug}.json", tag_source(posts))
                 meta["timelines"][slug] = {
                     "tab": name,
                     "unique_count": len(posts),
@@ -292,7 +299,8 @@ def main() -> int:
         if not args.skip_follows:
             from .follow_queued import drain_follow_queue
 
-            drain_follow_queue(page, args.db, limit=args.follow_limit)
+            # Only the main account's queue; topic accounts drain via account_actions.
+            drain_follow_queue(page, args.db, limit=args.follow_limit, account="main")
 
         ctx.close()
     return 0

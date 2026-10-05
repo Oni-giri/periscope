@@ -88,7 +88,7 @@
             <span class="avatar">{{ pick.tweet.author[:2]|upper }}</span>
             {% endif %}
             <div class="nugget-meta-copy">
-              <span class="nugget-kicker">{% if pick.nugget %}Nugget{% else %}Actionable{% endif %} · {{ pick.tag }}</span>
+              <span class="nugget-kicker">{% if pick.nugget %}Nugget{% else %}Actionable{% endif %} · {{ pick.tag }}{% if pick.accounts %} · {{ pick.accounts|map(attribute='label')|join(' + ') }}{% endif %}</span>
               <strong class="nugget-author">@{{ pick.tweet.author }}</strong>
             </div>
           </div>
@@ -97,6 +97,8 @@
           {% set tweet_id = pick.tweet.id %}
           {% set handle = pick.tweet.author %}
           {% set digest_date = digest.date %}
+          {% set follow_account = pick.account or '' %}
+          {% set follow_topic = pick.topic or '' %}
           <div class="nugget-actions" data-stop-drawer>
             {% include "partials/action_strip.html" %}
           </div>
@@ -191,6 +193,7 @@
               <time datetime="{{ pick.tweet.created_at }}">{{ pick.tweet.created_at|absolute_time }}</time>
               <a class="open-on-x" href="{{ tweet_url.value }}" rel="noopener noreferrer">Open on X</a>
               <span class="tag">{{ pick.tag }}</span>
+              {% include "partials/account_chips.html" %}
             </div>
             <blockquote>{{ pick.tweet.text }}</blockquote>
             {% if commentary %}
@@ -212,6 +215,8 @@
             {% set tweet_id = pick.tweet.id %}
             {% set handle = pick.tweet.author %}
             {% set digest_date = digest.date %}
+            {% set follow_account = pick.account or '' %}
+            {% set follow_topic = pick.topic or '' %}
             {% include "partials/action_strip.html" %}
           </div>
         </article>

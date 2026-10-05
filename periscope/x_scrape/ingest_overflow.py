@@ -58,29 +58,36 @@ def overflow_fetch_now(
 
 
 def load_scrape_posts(dumps_dir: Path) -> list[dict[str, Any]]:
-    """Load foryou/following/timeline_*.json, deduped by status_id."""
+    """Load foryou/following/timeline_*.json plus topic-account dumps, deduped by
+    status_id (first body wins, every ``source_accounts`` tag kept)."""
 
-    paths = [dumps_dir / name for name in SCRAPE_NAMES]
+    from periscope.x_accounts import MAIN_SLUG, merge_sources
+
+    paths: list[tuple[str, str, Path]] = [
+        (name.removesuffix(".json"), MAIN_SLUG, dumps_dir / name) for name in SCRAPE_NAMES
+    ]
     if dumps_dir.is_dir():
-        paths.extend(sorted(dumps_dir.glob("timeline_*.json")))
-    by_id: dict[str, dict[str, Any]] = {}
-    for path in paths:
+        paths.extend(
+            (p.stem.replace("timeline_", ""), MAIN_SLUG, p)
+            for p in sorted(dumps_dir.glob("timeline_*.json"))
+        )
+        paths.extend(
+            ("following", p.parent.name, p)
+            for p in sorted((dumps_dir / "accounts").glob("*/following.json"))
+            if p.parent.name != MAIN_SLUG
+        )
+
+    def _load(path: Path) -> list[dict[str, Any]]:
         if not path.is_file():
-            continue
+            return []
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
-            continue
-        if not isinstance(data, list):
-            continue
-        for post in data:
-            if not isinstance(post, dict):
-                continue
-            sid = str(post.get("status_id") or "")
-            if not sid or sid in by_id:
-                continue
-            by_id[sid] = post
-    return list(by_id.values())
+            return []
+        return [post for post in data if isinstance(post, dict)] if isinstance(data, list) else []
+
+    ordered, _ = merge_sources((feed, acct, _load(path)) for feed, acct, path in paths)
+    return ordered
 
 
 def digest_keeper_ids(document: dict[str, Any] | None) -> set[str]:
@@ -154,6 +161,9 @@ def scrape_post_to_payload(post: dict[str, Any]) -> dict[str, Any]:
             payload["quoted_id"] = qid
     elif post.get("quoted_id"):
         payload["quoted_id"] = str(post["quoted_id"])
+    sources = post.get("source_accounts")
+    if isinstance(sources, list) and any(s != "main" for s in sources):
+        payload["source_accounts"] = [str(s) for s in sources if s]
     if reply_to:
         payload["in_reply_to_status_id_str"] = str(reply_to)
         payload["replying_to_status"] = str(reply_to)

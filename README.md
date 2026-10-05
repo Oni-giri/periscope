@@ -150,6 +150,52 @@ curator does not tweet, like, follow, or reply. Today serves cached images from
 `/media/...` when present and keeps original remote URLs if a download fails.
 
 
+### Topic accounts (one X account per topic)
+
+Each topic can be its own X account: account `ai` only follows AI posters and
+likes AI posts, `crypto` does the same for crypto, and so on. Your main account
+stays the mixed one (For You, Following, pinned Grok timelines) and is the
+built-in `main` row, mapped to the existing scrape profile, so nothing changes
+until you add a topic account. The recap merges every source into one magazine;
+duplicates are merged and keep all source tags, and Today shows a small account
+chip on each pick once a topic account contributed.
+
+Adding one:
+
+1. Create the X account and follow a few good accounts for the topic by hand.
+2. Settings → **Accounts** → *Add topic account*: label (e.g. `AI`), optional
+   id (defaults to the label slug), X handle, and a short topic description.
+   The curator sees the description; the label joins the topic list.
+3. Sign it in, using either option:
+   - **Upload**: on any machine, create a fresh Chrome profile, sign in to that
+     X account only, quit Chrome, zip the profile folder, then use *Edit → Replace
+     profile* on the account card. Uploading is refused while Chrome has that
+     profile open.
+   - **Headed Chrome on this host**: run
+     `uv run python -m periscope.x_scrape.account_scrape --account ai` (no
+     `--headless`) once with a visible desktop. It opens
+     `data/chrome-profiles/ai` (or the folder you set). If it prints
+     `NOT_SIGNED_IN`, open that profile in Chrome
+     (`google-chrome --user-data-dir=data/chrome-profiles/ai https://x.com/login`),
+     sign in, close it, and rerun.
+4. The next `periscope-digest` scrapes that account's Following timeline to its
+   own watermark (`data/watermarks/<id>.json`, at least 100 posts by default;
+   set this per account or with `--min-account-following`). Every post is tagged
+   `source_account`. If an account is signed out or locked, the run logs
+   `NOT_SIGNED_IN account=<id>` and skips that account; the other accounts and
+   the main magazine still run. The card shows signed-in status and the last
+   scrape time.
+
+Likes and follows only happen with `periscope-digest --actions`
+(`--actions-dry-run` prints the plan without clicking). The default rule:
+a keeper that topic account X surfaced is liked by X, if likes are on for X. A
+`follow` candidate whose topic matches X, or that X surfaced, goes to X's
+follow queue, and X follows up to its cap per run. Follows that route to
+`main` stay in the manual Today queue that the main scrape drains, as before.
+To run the actions by hand:
+`uv run python -m periscope.x_scrape.account_actions --digest data/x-dumps/digest-YYYY-MM-DD.json --dry-run`.
+
+
 ## Actions, nuggets, and idea inbox
 
 Today is not only news. Each pick can carry 1–3 typed actions (`try`, `read`,

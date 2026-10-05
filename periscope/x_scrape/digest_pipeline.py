@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Run scrape → curate → hydrate → digest → enrich_actions → ingest as one CLI."""
+"""Run scrape → topic accounts → curate → hydrate → digest → enrich → ingest [→ actions].
+
+Topic accounts (Settings → Accounts) are scraped after the main account; a
+signed-out one logs NOT_SIGNED_IN and is skipped. ``--actions`` enables likes and
+follows on the owning topic accounts; without it nothing is clicked.
+"""
 
 from __future__ import annotations
 
@@ -57,6 +62,27 @@ def main() -> int:
     parser.add_argument("--skip-timelines", action="store_true")
     parser.add_argument("--timelines", default="Tech,Crypto,Business")
     parser.add_argument("--min-timeline", type=int, default=100)
+    parser.add_argument(
+        "--skip-accounts",
+        action="store_true",
+        help="Do not scrape topic accounts' Following timelines",
+    )
+    parser.add_argument(
+        "--min-account-following",
+        type=int,
+        default=None,
+        help="Min unique Following posts per topic account (default: per-account, 100)",
+    )
+    parser.add_argument(
+        "--actions",
+        action="store_true",
+        help="After ingest, like keepers / follow routed handles on topic accounts",
+    )
+    parser.add_argument(
+        "--actions-dry-run",
+        action="store_true",
+        help="With --actions: print the like/follow plan without clicking",
+    )
     parser.add_argument("--model", default=None)
     parser.add_argument("--batch-size", type=int, default=40)
     parser.add_argument("--min-score", type=int, default=6)
@@ -103,6 +129,29 @@ def main() -> int:
         if args.skip_timelines:
             scrape_cmd.append("--skip-timelines")
         _run("scrape_feeds", scrape_cmd)
+
+    if not args.skip_scrape and not args.skip_accounts:
+        accounts_cmd = [
+            py,
+            "-m",
+            "periscope.x_scrape.account_scrape",
+            "--data-dir",
+            str(args.data_dir),
+            "--out-dir",
+            str(out_dir),
+            "--max-scrolls",
+            str(args.max_scrolls),
+        ]
+        if args.min_account_following is not None:
+            accounts_cmd.extend(["--min-following", str(args.min_account_following)])
+        if args.headless:
+            accounts_cmd.append("--headless")
+        # Soft-fail: a broken topic account must not block the main magazine.
+        print("==> account_scrape", flush=True)
+        print(" ".join(accounts_cmd), flush=True)
+        result = subprocess.run(accounts_cmd, check=False)
+        if result.returncode != 0:
+            print(f"account_scrape exited {result.returncode}; continuing", flush=True)
 
     if not args.skip_curate:
         curate_cmd = [
@@ -211,6 +260,28 @@ def main() -> int:
             )
         except Exception as exc:
             print(f"ingest_overflow failed: {exc}; continuing", flush=True)
+
+    if args.actions and digest_path.is_file():
+        actions_cmd = [
+            py,
+            "-m",
+            "periscope.x_scrape.account_actions",
+            "--digest",
+            str(digest_path),
+            "--data-dir",
+            str(args.data_dir),
+        ]
+        if args.headless:
+            actions_cmd.append("--headless")
+        if args.actions_dry_run:
+            actions_cmd.append("--dry-run")
+        print("==> account_actions", flush=True)
+        print(" ".join(actions_cmd), flush=True)
+        result = subprocess.run(actions_cmd, check=False)
+        if result.returncode != 0:
+            print(f"account_actions exited {result.returncode}; continuing", flush=True)
+    elif not args.actions:
+        print("actions disabled (pass --actions to like/follow on topic accounts)", flush=True)
 
     print(f"pipeline done date={digest_date} digest={digest_path}", flush=True)
     return 0

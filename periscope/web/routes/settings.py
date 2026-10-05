@@ -51,27 +51,14 @@ from periscope.x_scrape.curate_feeds import (
 )
 
 router = APIRouter()
-_TABS = {"reading", "schedule", "system", "connections"}
+_TABS = {"reading", "schedule", "system", "connections", "accounts"}
 
 
 def _chrome_profile_path(config: Any) -> Any:
-    """Resolve the Chromium user-data dir used for X scrape login."""
-    import os
-    from pathlib import Path
+    """Resolve the Chromium user-data dir used for X scrape login (main account)."""
+    from periscope.x_accounts import main_profile_path
 
-    env = os.environ.get("PERISCOPE_X_CHROME_PROFILE")
-    if env:
-        return Path(env).expanduser()
-
-    candidates = [
-        Path("/workspace/x-scrape/chrome-profile"),  # daily recap routines
-        Path(config.data_dir) / "chrome-profile",
-        Path("data/chrome-profile"),
-    ]
-    for candidate in candidates:
-        if (candidate / "Default").exists():
-            return candidate
-    return candidates[0]
+    return main_profile_path(config.data_dir)
 
 
 def _chrome_profile_ready(path: Any) -> bool:
@@ -100,6 +87,119 @@ def _chrome_profile_meta_context(data_dir: Any) -> dict[str, Any]:
     }
 
 
+def _x_account_status(account: Any, profile: Any) -> tuple[str, str]:
+    """(short status, css state) for the Accounts list."""
+    from periscope.web.chrome_profile import profile_in_use
+    from periscope.x_accounts import profile_ready
+
+    if not profile_ready(profile):
+        return "Needs sign-in (no profile yet)", "warn"
+    if profile_in_use(profile):
+        return "Profile in use (Chrome open)", "warn"
+    if account.signed_in is True:
+        return "Signed in", "ok"
+    if account.signed_in is False:
+        return "NOT_SIGNED_IN at last scrape", "error"
+    return "Profile present, not checked yet", "muted"
+
+
+def _x_accounts_context(database: Any, config: Any) -> list[dict[str, Any]]:
+    from periscope.x_accounts import XAccount, profile_path, watermark_path
+
+    try:
+        rows = database.list_x_accounts()
+    except Exception:  # noqa: BLE001 - pre-migration database
+        return []
+    pending: dict[str, int] = {}
+    try:
+        for row in database.list_pending_follows():
+            key = str(row.get("account") or "main")
+            pending[key] = pending.get(key, 0) + 1
+    except Exception:  # noqa: BLE001
+        pending = {}
+    out = []
+    for row in rows:
+        account = XAccount.from_row(row)
+        if account.is_main and not account.last_scrape_at:
+            account = _main_scrape_from_meta(account, config)
+        profile = (
+            _chrome_profile_path(config)
+            if account.is_main and not account.profile_dir
+            else profile_path(account, config.data_dir)
+        )
+        status, state = _x_account_status(account, profile)
+        out.append(
+            {
+                "account": account,
+                "row": row,
+                "profile": str(profile),
+                "watermark": str(watermark_path(account, config.data_dir)),
+                "status": status,
+                "state": state,
+                "pending_follows": pending.get(account.slug, 0),
+            }
+        )
+    return out
+
+
+def _main_scrape_from_meta(account: Any, config: Any) -> Any:
+    """Main's scrape is unchanged and does not write x_accounts; read its
+    ``x-dumps/scrape_meta.json`` instead for last scrape / signed-in."""
+    import dataclasses
+    import json
+    from datetime import UTC, datetime
+    from pathlib import Path
+
+    meta_file = Path(config.data_dir) / "x-dumps" / "scrape_meta.json"
+    try:
+        meta = json.loads(meta_file.read_text(encoding="utf-8"))
+        stamp = datetime.fromtimestamp(meta_file.stat().st_mtime, tz=UTC)
+    except (OSError, ValueError):
+        return account
+    if not isinstance(meta, dict):
+        return account
+    signed = meta.get("signed_in")
+    count = sum(
+        int((meta.get(key) or {}).get("unique_count") or 0) for key in ("foryou", "following")
+    )
+    return dataclasses.replace(
+        account,
+        last_scrape_at=stamp.isoformat().replace("+00:00", "Z"),
+        last_scrape_status="ok" if signed else "NOT_SIGNED_IN",
+        last_scrape_count=count or None,
+        signed_in=None if signed is None else bool(signed),
+    )
+
+
+def _account_form_values(form: Any, *, include_slug: bool) -> dict[str, Any]:
+    values: dict[str, Any] = {
+        "label": str(form.get("label", "")).strip(),
+        "x_handle": str(form.get("x_handle", "")).strip(),
+        "description": str(form.get("description", "")).strip(),
+        "profile_dir": str(form.get("profile_dir", "")).strip(),
+        "min_following": str(form.get("min_following", "100")).strip() or "100",
+        "follow_cap": str(form.get("follow_cap", "15")).strip() or "15",
+        "like_enabled": form.get("like_enabled") == "on",
+        "enabled": form.get("enabled") == "on",
+    }
+    if include_slug:
+        values["slug"] = str(form.get("slug", "")).strip().lower()
+    return values
+
+
+def _clean_account_values(values: dict[str, Any]) -> dict[str, Any]:
+    clean = dict(values)
+    clean.pop("slug", None)
+    try:
+        clean["min_following"] = int(values["min_following"])
+        clean["follow_cap"] = int(values["follow_cap"])
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Min Following posts and follow cap must be whole numbers") from exc
+    if clean["min_following"] < 1:
+        raise ValueError("Min Following posts must be at least 1")
+    return clean
+
+
 def _parse_interest_names(raw: str) -> list[str]:
     return parse_interest_lines(raw)
 
@@ -124,6 +224,7 @@ def _context(
     curator_prompt: str | None = None,
     enrich_prompt: str | None = None,
     validation: dict[str, Any] | None = None,
+    account_form: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if tab not in _TABS:
         tab = "reading"
@@ -149,7 +250,10 @@ def _context(
             ("schedule", "Schedule"),
             ("system", "System"),
             ("connections", "Connections"),
+            ("accounts", "Accounts"),
         ),
+        "x_accounts": _x_accounts_context(database, request.app.state.config),
+        "account_form": account_form or {},
         "message": message,
         "error": error,
         "validation": validation,
@@ -196,6 +300,7 @@ def _response(
     curator_prompt: str | None = None,
     enrich_prompt: str | None = None,
     validation: dict[str, Any] | None = None,
+    account_form: dict[str, Any] | None = None,
 ) -> HTMLResponse:
     partial = request.headers.get("HX-Request") == "true"
     return request.app.state.templates.TemplateResponse(
@@ -210,6 +315,7 @@ def _response(
             curator_prompt=curator_prompt,
             enrich_prompt=enrich_prompt,
             validation=validation,
+            account_form=account_form,
         ),
     )
 
@@ -628,3 +734,149 @@ async def change_web_password(request: Request) -> HTMLResponse:
             error="Current password is incorrect.",
         )
     return _response(request, tab="system", message="Web password updated.")
+
+
+# ---------------------------------------------------------------------------
+# Topic X accounts (Settings → Accounts)
+
+
+@router.post("/settings/x-accounts/add", response_class=HTMLResponse)
+async def add_x_account(request: Request) -> HTMLResponse:
+    from periscope.x_accounts import MAIN_SLUG, slugify_account, validate_slug
+
+    form = await request.form()
+    values = _account_form_values(form, include_slug=True)
+    database = database_for(request)
+    try:
+        if not values["label"]:
+            raise ValueError("Topic label is required (e.g. AI, Crypto)")
+        slug = validate_slug(values["slug"] or slugify_account(values["label"]))
+        if slug == MAIN_SLUG:
+            raise ValueError("'main' is reserved for your main account")
+        database.add_x_account(slug, **_clean_account_values(values))
+        database.record_event("x_account_added", {"slug": slug, "label": values["label"]})
+    except ValueError as exc:
+        return _response(request, tab="accounts", error=str(exc), account_form=values)
+    return _response(
+        request,
+        tab="accounts",
+        message=(
+            f"Account '{values['label']}' added. Sign it in (upload a profile zip or "
+            "headed Chrome) before the next scrape."
+        ),
+    )
+
+
+@router.post("/settings/x-accounts/{slug}/edit", response_class=HTMLResponse)
+async def edit_x_account(request: Request, slug: str) -> HTMLResponse:
+    database = database_for(request)
+    existing = database.get_x_account(slug)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Account not found")
+    form = await request.form()
+    values = _account_form_values(form, include_slug=False)
+    try:
+        clean = _clean_account_values(values)
+        if slug == "main":
+            # Main stays mapped to the existing scrape profile and behaviour.
+            clean = {
+                key: clean[key] for key in ("label", "x_handle", "description") if key in clean
+            }
+        if not clean.get("label"):
+            raise ValueError("Topic label is required")
+        database.update_x_account(slug, **clean)
+    except ValueError as exc:
+        return _response(request, tab="accounts", error=str(exc))
+    return _response(request, tab="accounts", message=f"Account '{slug}' saved.")
+
+
+@router.post("/settings/x-accounts/{slug}/toggle", response_class=HTMLResponse)
+async def toggle_x_account(request: Request, slug: str) -> HTMLResponse:
+    database = database_for(request)
+    existing = database.get_x_account(slug)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Account not found")
+    if slug == "main":
+        return _response(
+            request,
+            tab="accounts",
+            error="The main account is always scraped; it cannot be disabled here.",
+        )
+    enabled = not bool(existing["enabled"])
+    database.update_x_account(slug, enabled=enabled)
+    state = "enabled" if enabled else "disabled"
+    return _response(request, tab="accounts", message=f"Account '{slug}' {state}.")
+
+
+@router.post("/settings/x-accounts/{slug}/delete", response_class=HTMLResponse)
+async def delete_x_account(request: Request, slug: str) -> HTMLResponse:
+    database = database_for(request)
+    try:
+        removed = database.delete_x_account(slug)
+    except ValueError as exc:
+        return _response(request, tab="accounts", error=str(exc))
+    if not removed:
+        raise HTTPException(status_code=404, detail="Account not found")
+    database.record_event("x_account_deleted", {"slug": slug})
+    return _response(
+        request,
+        tab="accounts",
+        message=(
+            f"Account '{slug}' removed. Its Chrome profile folder was left on disk; "
+            "pending follows for it were dropped."
+        ),
+    )
+
+
+@router.post("/settings/x-accounts/{slug}/chrome-profile", response_class=HTMLResponse)
+async def upload_x_account_profile(
+    request: Request,
+    slug: str,
+    profile_zip: UploadFile = File(...),
+) -> HTMLResponse:
+    """Replace one topic account's Chromium profile from an uploaded zip."""
+    import shutil
+    import tempfile
+    from pathlib import Path
+
+    from periscope.x_accounts import XAccount, profile_path
+
+    database = database_for(request)
+    row = database.get_x_account(slug)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Account not found")
+    account = XAccount.from_row(row)
+    config = request.app.state.config
+    if account.is_main and not account.profile_dir:
+        dest = Path(_chrome_profile_path(config))
+    else:
+        dest = profile_path(account, config.data_dir)
+    filename = (profile_zip.filename or "").strip()
+    tmp_parent = Path(tempfile.mkdtemp(prefix="periscope-chrome-upload-"))
+    try:
+        raw = await profile_zip.read()
+        if not raw:
+            raise ValueError("Uploaded file is empty.")
+        is_zip_magic = raw[:4] in (b"PK\x03\x04", b"PK\x05\x06")
+        if not (filename.lower().endswith(".zip") or is_zip_magic):
+            raise ValueError("Upload must be a .zip Chrome profile archive.")
+        extract_root = extract_zip_to_temp(raw, tmp_parent)
+        replace_chrome_profile(dest, extract_root)
+        database.record_x_account_profile_upload(slug, source_filename=filename or "profile.zip")
+        if account.is_main:
+            write_profile_meta(
+                config.data_dir, source_filename=filename or "profile.zip", bytes_count=len(raw)
+            )
+        database.record_event(
+            "chrome_profile_replaced",
+            {"account": slug, "source_filename": filename or "profile.zip", "bytes": len(raw)},
+        )
+    except (ValueError, RuntimeError, OSError) as exc:
+        return _response(request, tab="accounts", error=f"{account.label}: {exc}")
+    finally:
+        shutil.rmtree(tmp_parent, ignore_errors=True)
+    return _response(
+        request,
+        tab="accounts",
+        message=f"Chrome profile for '{account.label}' replaced. Next scrape checks sign-in.",
+    )

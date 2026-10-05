@@ -377,7 +377,60 @@ FOLLOW_QUEUE_STATUSES: tuple[str, ...] = ("pending", "followed", "already", "fai
 FOLLOW_MARK_STATUSES: tuple[str, ...] = ("followed", "already", "failed")
 
 
-MIGRATIONS: tuple[str, ...] = (MIGRATION_1, MIGRATION_2, MIGRATION_3, MIGRATION_4, MIGRATION_5)
+MIGRATION_6 = """
+CREATE TABLE IF NOT EXISTS x_accounts (
+  slug TEXT PRIMARY KEY,
+  label TEXT NOT NULL,
+  x_handle TEXT NOT NULL DEFAULT '',
+  profile_dir TEXT NOT NULL DEFAULT '',
+  enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+  description TEXT NOT NULL DEFAULT '',
+  watermark_path TEXT NOT NULL DEFAULT '',
+  min_following INTEGER NOT NULL DEFAULT 100,
+  follow_cap INTEGER NOT NULL DEFAULT 15,
+  like_enabled INTEGER NOT NULL DEFAULT 1 CHECK (like_enabled IN (0, 1)),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  last_scrape_at TEXT,
+  last_scrape_status TEXT,
+  last_scrape_count INTEGER,
+  signed_in INTEGER,
+  profile_uploaded_at TEXT,
+  profile_upload_name TEXT
+);
+INSERT OR IGNORE INTO x_accounts(
+  slug, label, enabled, like_enabled, description, created_at, updated_at
+) VALUES (
+  'main', 'Main', 1, 0,
+  'Mixed main account: For You, Following and pinned Grok timelines.',
+  strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+);
+ALTER TABLE follow_queue ADD COLUMN account TEXT NOT NULL DEFAULT 'main';
+CREATE INDEX IF NOT EXISTS follow_queue_account_idx ON follow_queue(account, status, added_at);
+"""
+
+
+X_ACCOUNT_FIELDS: tuple[str, ...] = (
+    "label",
+    "x_handle",
+    "profile_dir",
+    "enabled",
+    "description",
+    "watermark_path",
+    "min_following",
+    "follow_cap",
+    "like_enabled",
+)
+
+
+MIGRATIONS: tuple[str, ...] = (
+    MIGRATION_1,
+    MIGRATION_2,
+    MIGRATION_3,
+    MIGRATION_4,
+    MIGRATION_5,
+    MIGRATION_6,
+)
 
 
 class Database:
@@ -1060,12 +1113,14 @@ class Database:
         handle: str,
         tweet_id: str | None = None,
         source: str = "today",
+        account: str | None = None,
     ) -> dict[str, Any]:
         canonical = str(handle or "").strip().removeprefix("@").lower()
         if not canonical:
             raise ValueError("Follow handle cannot be empty")
         tweet_id_value = str(tweet_id).strip() if tweet_id else None
         source_value = str(source or "today").strip() or "today"
+        account_value = str(account or "main").strip().lower() or "main"
         now = isoformat()
         with self.connect() as connection:
             existing = connection.execute(
@@ -1076,10 +1131,10 @@ class Database:
                 connection.execute(
                     """
                     INSERT INTO follow_queue(
-                        handle, tweet_id, added_at, status, source
-                    ) VALUES (?, ?, ?, 'pending', ?)
+                        handle, tweet_id, added_at, status, source, account
+                    ) VALUES (?, ?, ?, 'pending', ?, ?)
                     """,
-                    (canonical, tweet_id_value, now, source_value),
+                    (canonical, tweet_id_value, now, source_value, account_value),
                 )
             elif existing["status"] == "failed":
                 connection.execute(
@@ -1089,11 +1144,12 @@ class Database:
                         added_at = ?,
                         status = 'pending',
                         source = COALESCE(?, source),
+                        account = ?,
                         last_error = NULL,
                         followed_at = NULL
                     WHERE handle = ?
                     """,
-                    (tweet_id_value, now, source_value, canonical),
+                    (tweet_id_value, now, source_value, account_value, canonical),
                 )
             connection.commit()
             row = connection.execute(
@@ -1103,12 +1159,159 @@ class Database:
         assert row is not None
         return dict(row)
 
-    def list_pending_follows(self) -> list[dict[str, Any]]:
+    def list_pending_follows(self, account: str | None = None) -> list[dict[str, Any]]:
+        """Pending follows; ``account`` limits to one X account's queue."""
+
         with self.connect() as connection:
-            rows = connection.execute(
-                "SELECT * FROM follow_queue WHERE status = 'pending' ORDER BY added_at, handle"
-            ).fetchall()
+            if account is None:
+                rows = connection.execute(
+                    "SELECT * FROM follow_queue WHERE status = 'pending' "
+                    "ORDER BY added_at, handle"
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    "SELECT * FROM follow_queue WHERE status = 'pending' AND account = ? "
+                    "ORDER BY added_at, handle",
+                    (str(account).strip().lower(),),
+                ).fetchall()
         return [dict(row) for row in rows]
+
+    # ------------------------------------------------------------------
+    # Topic X accounts (each its own X login / Chrome profile)
+
+    def list_x_accounts(self, *, enabled_only: bool = False) -> list[dict[str, Any]]:
+        query = "SELECT * FROM x_accounts"
+        if enabled_only:
+            query += " WHERE enabled = 1"
+        query += " ORDER BY CASE slug WHEN 'main' THEN 0 ELSE 1 END, label COLLATE NOCASE"
+        with self.connect() as connection:
+            rows = connection.execute(query).fetchall()
+        return [dict(row) for row in rows]
+
+    def get_x_account(self, slug: str) -> dict[str, Any] | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM x_accounts WHERE slug = ?", (str(slug).strip().lower(),)
+            ).fetchone()
+        return dict(row) if row else None
+
+    @staticmethod
+    def _x_account_values(values: Mapping[str, Any]) -> dict[str, Any]:
+        clean: dict[str, Any] = {}
+        for key in X_ACCOUNT_FIELDS:
+            if key not in values:
+                continue
+            value = values[key]
+            if key in {"enabled", "like_enabled"}:
+                clean[key] = 1 if value else 0
+            elif key in {"min_following", "follow_cap"}:
+                number = int(value)
+                if number < 0 or number > 2000:
+                    raise ValueError(f"{key} must be between 0 and 2000")
+                clean[key] = number
+            else:
+                text = str(value or "").strip()
+                if key == "x_handle":
+                    text = text.removeprefix("@")
+                if key == "label" and not text:
+                    raise ValueError("Label / topic is required")
+                clean[key] = text[:2000]
+        return clean
+
+    def add_x_account(self, slug: str, **values: Any) -> dict[str, Any]:
+        canonical = str(slug or "").strip().lower()
+        if not canonical:
+            raise ValueError("Account id is required")
+        clean = self._x_account_values({"label": canonical, **values})
+        now = isoformat()
+        columns = ["slug", *clean.keys(), "created_at", "updated_at"]
+        params = [canonical, *clean.values(), now, now]
+        placeholders = ",".join("?" for _ in columns)
+        with self.connect() as connection:
+            existing = connection.execute(
+                "SELECT 1 FROM x_accounts WHERE slug = ?", (canonical,)
+            ).fetchone()
+            if existing is not None:
+                raise ValueError(f"Account '{canonical}' already exists")
+            connection.execute(
+                f"INSERT INTO x_accounts({','.join(columns)}) VALUES ({placeholders})",  # noqa: S608
+                params,
+            )
+            connection.commit()
+        account = self.get_x_account(canonical)
+        assert account is not None
+        return account
+
+    def update_x_account(self, slug: str, **values: Any) -> dict[str, Any] | None:
+        canonical = str(slug or "").strip().lower()
+        clean = self._x_account_values(values)
+        if not clean:
+            return self.get_x_account(canonical)
+        assignments = ", ".join(f"{key} = ?" for key in clean)
+        with self.connect() as connection:
+            cursor = connection.execute(
+                f"UPDATE x_accounts SET {assignments}, updated_at = ? WHERE slug = ?",  # noqa: S608
+                (*clean.values(), isoformat(), canonical),
+            )
+            connection.commit()
+        if cursor.rowcount == 0:
+            return None
+        return self.get_x_account(canonical)
+
+    def delete_x_account(self, slug: str) -> bool:
+        """Remove a topic account row (never ``main``). Drops its *pending* follows
+        so they are not silently re-routed to another login; history stays."""
+
+        canonical = str(slug or "").strip().lower()
+        if canonical == "main":
+            raise ValueError("The main account cannot be deleted (disable it instead)")
+        with self.connect() as connection:
+            cursor = connection.execute("DELETE FROM x_accounts WHERE slug = ?", (canonical,))
+            connection.execute(
+                "DELETE FROM follow_queue WHERE account = ? AND status = 'pending'",
+                (canonical,),
+            )
+            connection.commit()
+        return cursor.rowcount > 0
+
+    def record_x_account_scrape(
+        self,
+        slug: str,
+        *,
+        status: str,
+        count: int | None = None,
+        signed_in: bool | None = None,
+        at: str | None = None,
+    ) -> None:
+        with self.connect() as connection:
+            connection.execute(
+                """
+                UPDATE x_accounts
+                SET last_scrape_at = ?, last_scrape_status = ?,
+                    last_scrape_count = COALESCE(?, last_scrape_count),
+                    signed_in = COALESCE(?, signed_in)
+                WHERE slug = ?
+                """,
+                (
+                    at or isoformat(),
+                    str(status)[:200],
+                    count,
+                    None if signed_in is None else int(bool(signed_in)),
+                    str(slug).strip().lower(),
+                ),
+            )
+            connection.commit()
+
+    def record_x_account_profile_upload(
+        self, slug: str, *, source_filename: str, at: str | None = None
+    ) -> None:
+        with self.connect() as connection:
+            connection.execute(
+                "UPDATE x_accounts SET profile_uploaded_at = ?, profile_upload_name = ?, "
+                "signed_in = NULL WHERE slug = ?",
+                (at or isoformat(), source_filename[:300], str(slug).strip().lower()),
+            )
+            connection.commit()
 
     def list_follow_queue(
         self,

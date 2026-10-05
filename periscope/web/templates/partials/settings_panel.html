@@ -274,5 +274,99 @@
         <button class="button" type="submit">Save connections</button>
       </div>
     </form>
+  {% elif tab == "accounts" %}
+    <section class="settings-section">
+      <h2 class="section-label">X accounts</h2>
+      <p class="muted-copy">Each topic is its own X account: it only follows and likes posts for that topic. <strong>Main</strong> stays your mixed account (For You, Following, pinned Grok timelines) and keeps using the profile from Connections. The daily recap merges every account into one magazine and tags each item with the account that surfaced it.</p>
+      <div class="xacct-list">
+        {% for item in x_accounts %}
+          {% set acct = item.account %}
+          <article class="xacct-card{% if not acct.enabled %} is-disabled{% endif %}" id="xacct-{{ acct.slug }}">
+            <header class="xacct-head">
+              <div class="xacct-title">
+                <strong>{{ acct.label }}</strong>
+                <span class="xacct-slug">{{ acct.slug }}{% if acct.x_handle %} · @{{ acct.x_handle }}{% endif %}</span>
+              </div>
+              <span class="xacct-state is-{{ item.state }}">{% if not acct.enabled %}Disabled{% else %}{{ item.status }}{% endif %}</span>
+            </header>
+            {% if acct.description %}<p class="xacct-desc">{{ acct.description }}</p>{% endif %}
+            <dl class="xacct-meta">
+              <div><dt>Last scrape</dt><dd>{% if acct.last_scrape_at %}{{ acct.last_scrape_at|absolute_datetime }}{% if acct.last_scrape_count is not none %} · {{ acct.last_scrape_count }} posts{% endif %}{% else %}Never{% endif %}</dd></div>
+              <div><dt>Last status</dt><dd>{{ acct.last_scrape_status or "—" }}</dd></div>
+              {% if acct.is_main %}
+              <div><dt>Scrapes</dt><dd>For You, Following, timelines</dd></div>
+              {% else %}
+              <div><dt>Following min</dt><dd>{{ acct.min_following }} posts</dd></div>
+              <div><dt>Likes / follows</dt><dd>{% if acct.like_enabled %}Likes on{% else %}Likes off{% endif %} · cap {{ acct.follow_cap }} · {{ item.pending_follows }} queued</dd></div>
+              {% endif %}
+              <div class="span-all"><dt>Profile</dt><dd><code>{{ item.profile }}</code>{% if acct.profile_uploaded_at %} · uploaded {{ acct.profile_uploaded_at|absolute_datetime }}{% endif %}</dd></div>
+            </dl>
+            <details class="advanced-block xacct-edit">
+              <summary>Edit{% if not acct.is_main %} · profile upload{% endif %}</summary>
+              <form class="settings-form" method="post" action="/settings/x-accounts/{{ acct.slug }}/edit" hx-post="/settings/x-accounts/{{ acct.slug }}/edit" hx-target="#settings-panel" hx-swap="outerHTML">
+                <div class="form-grid">
+                  <label><span>Label / topic</span><input name="label" value="{{ acct.label }}" required></label>
+                  <label><span>X handle</span><input name="x_handle" value="{{ acct.x_handle }}" placeholder="handle" autocomplete="off"></label>
+                  <label class="span-2"><span>Topic description (for the curator)</span><textarea name="description" rows="3">{{ acct.description }}</textarea></label>
+                  {% if not acct.is_main %}
+                  <label class="span-2"><span>Chrome profile folder</span><input name="profile_dir" value="{{ acct.profile_dir }}" placeholder="chrome-profiles/{{ acct.slug }}" spellcheck="false"></label>
+                  <label><span>Following min posts</span><input type="number" name="min_following" min="1" max="2000" value="{{ acct.min_following }}"></label>
+                  <label><span>Follow cap per run</span><input type="number" name="follow_cap" min="0" max="2000" value="{{ acct.follow_cap }}"></label>
+                  {% endif %}
+                </div>
+                {% if not acct.is_main %}
+                <label class="check-row"><input type="checkbox" name="like_enabled"{% if acct.like_enabled %} checked{% endif %}><span><strong>Like keepers</strong><small>Keepers this account surfaced get liked by it (only with <code>--actions</code>).</small></span></label>
+                <label class="check-row"><input type="checkbox" name="enabled"{% if acct.enabled %} checked{% endif %}><span><strong>Enabled</strong><small>Scraped and used for actions.</small></span></label>
+                {% else %}
+                <p class="muted-copy">Main uses the Connections profile and the existing scrape. Upload its profile under Connections.</p>
+                {% endif %}
+                <div class="form-actions">
+                  <button class="button" type="submit">Save</button>
+                </div>
+              </form>
+              {% if not acct.is_main %}
+              <form class="settings-form" method="post" action="/settings/x-accounts/{{ acct.slug }}/chrome-profile" enctype="multipart/form-data" hx-post="/settings/x-accounts/{{ acct.slug }}/chrome-profile" hx-encoding="multipart/form-data" hx-target="#settings-panel" hx-swap="outerHTML">
+                <div class="form-grid">
+                  <label class="span-2"><span>Profile zip for {{ acct.label }}</span><input type="file" name="profile_zip" accept=".zip,application/zip" required></label>
+                </div>
+                <div class="form-actions">
+                  <button class="button button-muted" type="submit">Replace profile</button>
+                </div>
+              </form>
+              {% endif %}
+            </details>
+            {% if not acct.is_main %}
+            <div class="form-actions xacct-actions">
+              <button class="button button-muted" type="button" hx-post="/settings/x-accounts/{{ acct.slug }}/toggle" hx-target="#settings-panel" hx-swap="outerHTML">{% if acct.enabled %}Disable{% else %}Enable{% endif %}</button>
+              <button class="button button-muted button-danger" type="button" hx-post="/settings/x-accounts/{{ acct.slug }}/delete" hx-confirm="Remove {{ acct.label }}? The Chrome profile folder stays on disk." hx-target="#settings-panel" hx-swap="outerHTML">Delete</button>
+            </div>
+            {% endif %}
+          </article>
+        {% else %}
+          <p class="muted-copy">No accounts yet. Restart once so the database migration creates the main account.</p>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="settings-section">
+      <h2 class="section-label">Add topic account</h2>
+      <p class="muted-copy">Create the X account first, follow a few people for that topic, then sign it in here (upload a profile zip) or in a headed Chrome on this host.</p>
+      <form class="settings-form" method="post" action="/settings/x-accounts/add" hx-post="/settings/x-accounts/add" hx-target="#settings-panel" hx-swap="outerHTML">
+        <div class="form-grid">
+          <label><span>Label / topic</span><input name="label" value="{{ account_form.label or '' }}" placeholder="AI" required></label>
+          <label><span>Account id</span><input name="slug" value="{{ account_form.slug or '' }}" placeholder="ai (from label)" pattern="[a-z0-9][a-z0-9-]{0,39}" spellcheck="false" autocomplete="off"></label>
+          <label><span>X handle</span><input name="x_handle" value="{{ account_form.x_handle or '' }}" placeholder="my_ai_reader" autocomplete="off"></label>
+          <label><span>Chrome profile folder</span><input name="profile_dir" value="{{ account_form.profile_dir or '' }}" placeholder="chrome-profiles/&lt;id&gt;" spellcheck="false"></label>
+          <label class="span-2"><span>Topic description (for the curator)</span><textarea name="description" rows="3" placeholder="Frontier models, agents, evals, open weights. Skip AI hype threads.">{{ account_form.description or '' }}</textarea></label>
+          <label><span>Following min posts</span><input type="number" name="min_following" min="1" max="2000" value="{{ account_form.min_following or 100 }}"></label>
+          <label><span>Follow cap per run</span><input type="number" name="follow_cap" min="0" max="2000" value="{{ account_form.follow_cap or 15 }}"></label>
+        </div>
+        <label class="check-row"><input type="checkbox" name="like_enabled"{% if account_form.like_enabled is not defined or account_form.like_enabled %} checked{% endif %}><span><strong>Like keepers</strong><small>Only runs with <code>periscope-digest --actions</code>.</small></span></label>
+        <label class="check-row"><input type="checkbox" name="enabled"{% if account_form.enabled is not defined or account_form.enabled %} checked{% endif %}><span><strong>Enabled</strong><small>Scrape this account's Following timeline every run.</small></span></label>
+        <div class="form-actions">
+          <button class="button" type="submit">Add account</button>
+        </div>
+      </form>
+    </section>
   {% endif %}
 </div>

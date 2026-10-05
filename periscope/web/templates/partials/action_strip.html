@@ -32,6 +32,8 @@
                 <input type="hidden" name="url" value="{{ action.url or '' }}">
                 <input type="hidden" name="label" value="{{ action.label }}">
                 <input type="hidden" name="source" value="{{ follow_source|default('today') }}">
+                {% if follow_account is defined and follow_account %}<input type="hidden" name="account" value="{{ follow_account }}">{% endif %}
+                {% if follow_topic is defined and follow_topic %}<input type="hidden" name="topic" value="{{ follow_topic }}">{% endif %}
                 <button type="submit" class="text-button">Follow</button>
               </form>
             {% endif %}

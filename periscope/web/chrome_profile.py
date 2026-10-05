@@ -14,7 +14,7 @@ META_FILENAME = "chrome_profile_upload.json"
 MAX_COMPRESSED_BYTES = 200 * 1024 * 1024  # 200 MB
 MAX_UNCOMPRESSED_BYTES = 500 * 1024 * 1024  # 500 MB
 
-_LOCK_MARKERS = (
+_LOCK_MARKERS = (  # kept for backwards compatibility; see profile_in_use
     "SingletonLock",
     "SingletonCookie",
     "SingletonSocket",
@@ -27,21 +27,75 @@ def profile_lock_path(profile_dir: Path) -> Path:
     return Path(profile_dir) / "SingletonLock"
 
 
+def _file_lock_held(path: Path) -> bool:
+    """True if another process holds a POSIX lock on ``path``.
+
+    Chromium leaves ``Default/LOCK`` (and similar) on disk after a clean exit;
+    only an active lock means the profile is open. Uses ``F_GETLK`` on a
+    read-only handle so checking never takes or changes a lock.
+    """
+    try:
+        import fcntl
+        import struct
+    except ImportError:  # pragma: no cover - non-POSIX: stay conservative
+        return True
+    layout = "hhqqi4x"  # struct flock on 64-bit Linux
+    try:
+        query = struct.pack(layout, fcntl.F_WRLCK, 0, 0, 0, 0)
+        with open(path, "rb") as handle:
+            reply = fcntl.fcntl(handle.fileno(), fcntl.F_GETLK, query)
+        lock_type = struct.unpack(layout, reply)[0]
+    except (OSError, struct.error):
+        return True
+    return lock_type != fcntl.F_UNLCK
+
+
+def _singleton_lock_live(path: Path) -> bool:
+    """SingletonLock is a symlink ``<host>-<pid>``; stale if that pid is gone."""
+    import os
+    import socket
+
+    if not path.is_symlink():
+        return True  # unknown format: be conservative
+    try:
+        target = os.readlink(path)
+    except OSError:
+        return True
+    host, _, pid_text = target.rpartition("-")
+    if not pid_text.isdigit() or host != socket.gethostname():
+        return True
+    try:
+        os.kill(int(pid_text), 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
 def profile_in_use(profile_dir: Path) -> bool:
     """True if Chromium appears to still hold this user-data directory.
 
-    Best-effort: SingletonLock / SingletonCookie / lockfile / Default/LOCK.
-    When lock files exist, refuse rather than risk corrupting a live profile.
+    Best-effort: a live SingletonLock (or SingletonCookie/Socket), or an
+    actively flock-held ``lockfile`` / ``Default/LOCK``. When unsure, refuse
+    rather than risk corrupting a live profile.
     """
     root = Path(profile_dir)
     if not root.exists():
         return False
-    for name in _LOCK_MARKERS:
-        if (root / name).exists():
+    singleton = root / "SingletonLock"
+    if singleton.is_symlink() or singleton.exists():
+        if _singleton_lock_live(singleton):
             return True
-    default_lock = root / "Default" / "LOCK"
-    if default_lock.exists():
-        return True
+    for name in ("SingletonCookie", "SingletonSocket"):
+        marker = root / name
+        if (marker.is_symlink() or marker.exists()) and not (
+            singleton.is_symlink() and not _singleton_lock_live(singleton)
+        ):
+            return True
+    for lock in (root / "lockfile", root / "Default" / "LOCK"):
+        if lock.exists() and _file_lock_held(lock):
+            return True
     return False
 
 

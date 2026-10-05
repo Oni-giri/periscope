@@ -1,0 +1,7 @@
+{% if pick.accounts %}
+  <span class="account-chips" aria-label="Surfaced by account">
+    {% for acct in pick.accounts %}
+      <span class="account-chip{% if acct.slug == 'main' %} is-main{% endif %}{% if acct.slug == pick.account %} is-owner{% endif %}" title="Surfaced by {{ acct.label }}{% if acct.slug == pick.account and pick.accounts|length > 1 %} (owner){% endif %}">{{ acct.label }}</span>
+    {% endfor %}
+  </span>
+{% endif %}

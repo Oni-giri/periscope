@@ -49,6 +49,9 @@ def _as_tweet_payload(item: dict[str, Any]) -> dict[str, Any]:
         payload["quoted_id"] = item["quoted_id"]
     if item.get("thread_root_id"):
         payload["thread_root_id"] = item["thread_root_id"]
+    sources = item.get("source_accounts")
+    if isinstance(sources, list) and sources:
+        payload["source_accounts"] = [str(s) for s in sources if s]
     return payload
 
 
@@ -123,6 +126,18 @@ def _pick_drafts(
         if pick.get("nugget_why"):
             extras["nugget_why"] = str(pick["nugget_why"])
             draft["nugget_why"] = str(pick["nugget_why"])
+        # Multi-account: owner account + every source tag, for Today chips.
+        for key in ("account", "account_label", "topic"):
+            if pick.get(key):
+                extras[key] = str(pick[key])
+        if isinstance(pick.get("source_accounts"), list) and pick["source_accounts"]:
+            extras["source_accounts"] = [str(s) for s in pick["source_accounts"] if s]
+        if isinstance(pick.get("accounts"), list) and pick["accounts"]:
+            extras["accounts"] = [
+                {"slug": str(a.get("slug") or ""), "label": str(a.get("label") or a.get("slug"))}
+                for a in pick["accounts"]
+                if isinstance(a, dict) and a.get("slug")
+            ]
         if extras:
             extras_by_id[tweet_id] = extras
         drafts.append(draft)
